@@ -5,7 +5,7 @@
 * 变量
    * 基本类型
    * 数组
-   * 常量
+   * [常量](var_common.md)
 * 函数
    * [用户函数的实现](yong_hu_han_shu_de_shi_xian.md)
 * Zend虚拟机
