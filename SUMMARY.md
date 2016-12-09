@@ -1,6 +1,5 @@
 # Summary
 
-* [Introduction](README.md)
 * PHP基本架构
    * [PHP实现概述](base_introduction.md)
    * [执行流程](base_process.md)
