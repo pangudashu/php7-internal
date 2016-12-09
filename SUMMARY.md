@@ -1,7 +1,6 @@
 # Summary
 
 * [Introduction](README.md)
-* ddd
 * 变量
    * 基本类型
    * 数组
