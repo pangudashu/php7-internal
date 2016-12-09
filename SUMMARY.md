@@ -1,7 +1,7 @@
 # Summary
 
 * [Introduction](README.md)
-* PHP框架
+* PHP架构
 * 变量
    * 基本类型
    * 数组
