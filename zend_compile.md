@@ -55,3 +55,71 @@ err: 0b
 err: ?
 err:
 ```
+
+最终生成的opcodes结构为：
+
+```c
+truct _zend_op_array {
+    /* Common elements */
+    zend_uchar type;
+    zend_uchar arg_flags[3]; /* bitset of arg_info.pass_by_reference */
+    uint32_t fn_flags;
+    zend_string *function_name;
+    zend_class_entry *scope;
+    zend_function *prototype;
+    uint32_t num_args;
+    uint32_t required_num_args;
+    zend_arg_info *arg_info;
+    /* END of common elements */
+
+    uint32_t *refcount;
+
+    uint32_t this_var;
+
+    uint32_t last;
+    zend_op *opcodes; //opcode指令
+
+    int last_var;
+    uint32_t T;
+    zend_string **vars;
+
+    int last_brk_cont;
+    int last_try_catch;
+    zend_brk_cont_element *brk_cont_array;
+    zend_try_catch_element *try_catch_array;
+
+    /* static variables support */
+    HashTable *static_variables;
+
+    zend_string *filename;
+    uint32_t line_start;
+    uint32_t line_end;
+    zend_string *doc_comment;
+    uint32_t early_binding; /* the linked list of delayed declarations */
+
+    int last_literal;
+    zval *literals;
+
+    int  cache_size;
+    void **run_time_cache;
+
+    void *reserved[ZEND_MAX_RESERVED_RESOURCES];
+};
+
+struct _zend_op {
+    const void *handler; //指令执行handler
+    znode_op op1;   //操作数1
+    znode_op op2;   //操作数2
+    znode_op result; //返回值
+    uint32_t extended_value; 
+    uint32_t lineno; 
+    zend_uchar opcode;  //opcode指令
+    zend_uchar op1_type; //操作数1类型
+    zend_uchar op2_type; //操作数2类型
+    zend_uchar result_type; //返回值类型
+};
+```
+
+每条opcode都有两个操作数(不一定都有用)、一个返回值，其中handler是具体执行的方法，该方法通过opcode、op1_type、op2_type三个值索引到。
+
+操作数记录着当前指令的关键信息，可以用于变量的存储、访问，比如赋值语句："$a = 45;",两个操作数分别记录"$a"、"45"的存储位置
