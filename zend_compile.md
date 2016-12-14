@@ -136,11 +136,57 @@ struct _zend_op {
 #define IS_UNUSED   (1<<3)  //8
 #define IS_CV       (1<<4)  //16
 ```
-* IS_CONST    常量，编译时就可确定且不会改变的值，比如:$a = "hello~"，其中字符串"hello~"就是常量
+* IS_CONST    常量（字面量），编译时就可确定且不会改变的值，比如:$a = "hello~"，其中字符串"hello~"就是常量
 * IS_TMP_VAR  临时变量，比如：$a = "hello~" . time()，其中`"hello~" . time()`的值类型就是IS_TMP_VAR，再比如:$a = "123" + $b，`"123" + $b`的结果类型也是IS_TMP_VAR，从这两个例子可以猜测，临时变量多是执行期间其它类型组合现生成的一个中间值，由于它是现生成的，所以把IS_TMP_VAR赋值给IS_CV变量时不会增加其引用计数
 * IS_VAR      PHP内部的变量，这个很容易认为是PHP脚本里的变量，其实不是，这个类型最常见的例子是PHP函数的返回值，比如:$a = time()，其中`time()`的结果就是IS_VAR，这条语句实际会有两个zval，一个是`time()`返回值，类型是IS_VAR，另一个是`$a`，类型是IS_CV，整个赋值过程是：调用time()，将返回值存下，类型为IS_CV，然后将此值复制给$a，IS_CV = IS_TMP_VAR
 * IS_UNUSED   表示操作数没有使用
 * IS_CV       PHP变量，即脚本里定义的变量，这些变量是编译阶段确定的，所以是compile variable
 
-### 常量的存储
-常量(IS_CONST)在编译阶段就已经分配了，这些值存在`_zend_op_array->literals`数组中
+### 常量(字面量)、变量的存储&访问
+
+我们先想一下C程序是如何读写字面量、变量的。
+
+```c
+#include <stdio.h>
+int main()
+{
+    char *name = "pangudashu";
+
+    printf("%s\n", name);
+    return 0;
+}
+```
+我们知道name的值分配在栈上，而"pangudashu"分配在常量区，那么"name"变量名分配在哪呢？
+
+实际上C里面是不会存变量名称的，编译的过程会将变量名替换为偏移量表示：`ebp - 偏移量`或`ebp + 偏移量`，将上面的代码转为汇编:
+```c
+.LC0:
+    .string "pangudashu"
+    .text
+    .globl  main
+    .type   main, @function
+main:
+.LFB0:
+    pushq   %rbp
+    movq    %rsp, %rbp
+    subq    $16, %rsp
+    movq    $.LC0, -8(%rbp)
+    movq    -8(%rbp), %rax
+    movq    %rax, %rdi
+    call    puts
+    movl    $0, %eax
+    leave
+```
+可以看到`movq    $.LC0, -8(%rbp)`，而`-8(%rbp)`就是name变量。
+
+关于C程序的执行过程、内存分配可以看:[https://github.com/pangudashu/anywork/tree/master/func_execute](https://github.com/pangudashu/anywork/tree/master/func_execute)
+
+
+常量(IS_CONST)在编译阶段就已经分配了，这些值存在`_zend_op_array->literals`数组中，访问时通过`_zend_op_array->literals + 偏移量`读取，举个例子：
+```
+$a = 56;
+$b = "hello";
+```
+`56`通过`(zval*)(_zend_op_array->literals + 0)`取到，`hello`通过`(zval*)(_zend_op_array->literals + 16)`取到。
+
+
