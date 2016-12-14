@@ -142,4 +142,5 @@ struct _zend_op {
 * IS_UNUSED   表示操作数没有使用
 * IS_CV       PHP变量，即脚本里定义的变量，这些变量是编译阶段确定的，所以是compile variable
 
-
+### 常量的存储
+常量(IS_CONST)在编译阶段就已经分配了，这些值存在`_zend_op_array->literals`数组中
