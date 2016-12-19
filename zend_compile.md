@@ -2,6 +2,8 @@
 
 PHP是解析型语言，前面已经说过PHP只是一个普通的C程序，PHP代码经过语法解析转化为opcode数组，代码里的所有信息都保存在opcode中，然后将opcode数组交给zend引擎执行，opcode就是内核具体执行的命令，比如赋值、加减操作、函数调用等，每一条opcode都对应一个处理handle，这些handler全部是提前定义好的C函数，PHP代码的执行过程就是根据opcodes数组依次调用不同的C处理函数。
 
+![zend_compile](img/zend_compile.png)
+
 编译过程包括词法分析、语法分析，旧的PHP版本直接生成了opcode，PHP7新增了抽象语法树（AST），在语法分析阶段生成AST，然后再生成opcodes。
 
 PHP编译阶段的任务的就是`PHP代码 => AST => opcodes`的转化，使用re2c、bison完成编译，关于这两个的使用可以单独查下相关的资料。
@@ -120,8 +122,6 @@ struct _zend_op {
 };
 ```
 opcode各字段含义下面展开说明。
-
-![zend_compile](img/zend_compile.png)
 
 ### 操作数
 
