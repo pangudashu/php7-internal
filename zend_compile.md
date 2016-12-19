@@ -119,6 +119,10 @@ struct _zend_op {
     zend_uchar result_type; //返回值类型
 };
 ```
+opcode各字段含义下面展开说明。
+
+![zend_compile](img/zend_compile.png)
+
 ### 操作数
 
 每条opcode都有两个操作数(不一定都有用)、一个返回值，其中handler是具体执行的方法，handler通过opcode、op1_type、op2_type三个值索引到，每条opcode都最多有(5*5)个不同的处理handler，后面分析zend执行的时候再具体讲这块。
