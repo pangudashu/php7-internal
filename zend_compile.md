@@ -158,7 +158,7 @@ int main()
 ```
 我们知道name的值分配在栈上，而"pangudashu"分配在常量区，那么"name"变量名分配在哪呢？
 
-实际上C里面是不会存变量名称的，编译的过程会将变量名替换为偏移量表示：`ebp - 偏移量`或`ebp + 偏移量`，将上面的代码转为汇编:
+实际上C里面是不会存变量名称的，编译的过程会将变量名替换为偏移量表示：`ebp - 偏移量`或`esp + 偏移量`，将上面的代码转为汇编:
 ```c
 .LC0:
     .string "pangudashu"
@@ -182,12 +182,13 @@ main:
 关于C程序的执行过程、内存分配可以看:[https://github.com/pangudashu/anywork/tree/master/func_execute](https://github.com/pangudashu/anywork/tree/master/func_execute)
 
 
-虽然PHP代码不会直接编译为机器码，但编译、执行的设计跟C程序的几乎完全一致，也有常量区、变量也通过偏移量访问、也有虚拟的执行栈。
+虽然PHP代码不会直接编译为机器码，但编译、执行的设计跟C程序是一致的，也有常量区、变量也通过偏移量访问、也有虚拟的执行栈。
 
 ![php vs c](img/php_vs_c.png)
 
 在编译时就可确定且不会改变的量称为字面量，也称作常量(IS_CONST)，这些值在编译阶段就已经分配zval，保存在`_zend_op_array->literals`数组中(对应c程序的常量内存区)，访问时通过`_zend_op_array->literals + 偏移量`读取，举个例子：
 ```c
+<?php
 $a = 56;
 $b = "hello";
 ```
