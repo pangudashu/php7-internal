@@ -68,7 +68,7 @@ err:
 
 ```c
 truct _zend_op_array {
-    //下面common是普通函数或类成员方法对应的opcodes使用的字段
+    //common是普通函数或类成员方法对应的opcodes快速访问时使用的字段，后面分析PHP函数实现的时候会详细讲
     /* Common elements */
     zend_uchar type; //标示函数类型：1为PHP内部函数(扩展或内核提供的函数)、2为用户自定义函数(即PHP代码中写的function)
     zend_uchar arg_flags[3]; /* bitset of arg_info.pass_by_reference */
@@ -100,14 +100,14 @@ truct _zend_op_array {
     /* static variables support */
     HashTable *static_variables; //静态变量符号表
 
-    zend_string *filename;
+    zend_string *filename; //PHP文件路径
     uint32_t line_start;
     uint32_t line_end;
     zend_string *doc_comment;
     uint32_t early_binding; /* the linked list of delayed declarations */
 
-    int last_literal;
-    zval *literals;
+    int last_literal; 
+    zval *literals; //字面量(常量)数组
 
     int  cache_size;
     void **run_time_cache;
@@ -153,6 +153,9 @@ opcode各字段含义下面展开说明。
 * IS_VAR      PHP内部的变量，这个很容易认为是PHP脚本里的变量，其实不是，这个类型最常见的例子是PHP函数的返回值，比如:$a = time()，其中`time()`的结果就是IS_VAR，这条语句实际会有两个zval，一个是`time()`返回值，类型是IS_VAR，另一个是`$a`，类型是IS_CV，整个赋值过程是：调用time()，将返回值存下，类型为IS_CV，然后将此值复制给$a，IS_CV = IS_TMP_VAR
 * IS_UNUSED   表示操作数没有使用
 * IS_CV       PHP变量，即脚本里定义的变量，这些变量是编译阶段确定的，所以是compile variable
+
+`result_type`除了上面几种类型外还有一种类型`EXT_TYPE_UNUSED (1<<5)`，返回值没有使用时会用到，这个值跟`IS_UNUSED`的区别尚不得知。
+
 
 ### 常量(字面量)、变量的存储&访问
 
