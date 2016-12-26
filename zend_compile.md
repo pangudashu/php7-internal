@@ -1,12 +1,18 @@
 # PHP代码的编译
 
-PHP是解析型语言，前面已经说过PHP只是一个普通的C程序，PHP代码经过语法解析转化为opcode数组，代码里的所有信息都保存在opcode中，然后将opcode数组交给zend引擎执行，opcode就是内核具体执行的命令，比如赋值、加减操作、函数调用等，每一条opcode都对应一个处理handle，这些handler全部是提前定义好的C函数，PHP代码的执行过程就是根据opcodes数组依次调用不同的C处理函数。
+PHP是解析型高级语言，事实上从内核的角度来看PHP就是一个普通的C程序，它有main函数，我们写的PHP代码是这个程序的输入，然后经过内核的处理输出结果，内核将PHP代码"翻译"为C程序可识别的过程就是PHP的编译。
+
+那么这个"翻译"过程具体都有哪些操作呢？
+
+C程序在编译时将一行行代码编译为机器码，每一个操作都认为是一条机器指令，这些指令写入到编译后的二进制程序中，执行的时候将二进制程序load进相应的内存区域(常量区、数据区、代码区)、分配运行栈，然后从代码区起始位置开始执行，这是C程序编译、执行的简单过程。
+
+同样，PHP的编译与普通的C程序类似，只是PHP代码没有编译成机器码，而是解析成了若干条opcode数组，每条opcode就是C里面普通的struct，含义对应C程序的机器指令，执行的过程就是引擎依次执行opcode，比如我们在PHP里定义一个变量:`$a = 123;`，最终到内核里执行就是malloc一块内存，然后把值写进去。
+
+所以PHP的解析过程任务就是将PHP代码转化为opcode数组，代码里的所有信息都保存在opcode中，然后将opcode数组交给zend引擎执行，opcode就是内核具体执行的命令，比如赋值、加减操作、函数调用等，每一条opcode都对应一个处理handle，这些handler全部是提前定义好的C函数。
 
 ![zend_compile](img/zend_compile.png)
 
-编译过程包括词法分析、语法分析，旧的PHP版本直接生成了opcode，PHP7新增了抽象语法树（AST），在语法分析阶段生成AST，然后再生成opcodes。
-
-PHP编译阶段的任务的就是`PHP代码 => AST => opcodes`的转化，使用re2c、bison完成编译，关于这两个的使用可以单独查下相关的资料。
+从PHP代码到opcode是怎么实现的呢？首先想到的方式就是正则匹配，当然过程没有这么暴力。PHP编译过程包括词法分析、语法分析，使用re2c、bison完成，旧的PHP版本直接生成了opcode，PHP7新增了抽象语法树（AST），在语法分析阶段生成AST，然后再生成opcode数组。
 
 re2c的示例:(http://re2c.org/examples/examples.html)
 ```c
@@ -64,7 +70,7 @@ err:
 truct _zend_op_array {
     //下面common是普通函数或类成员方法对应的opcodes使用的字段
     /* Common elements */
-    zend_uchar type; //标示函数类型：用户自定义函数、PHP内部函数(扩展或内核提供的函数)
+    zend_uchar type; //标示函数类型：1为PHP内部函数(扩展或内核提供的函数)、2为用户自定义函数(即PHP代码中写的function)
     zend_uchar arg_flags[3]; /* bitset of arg_info.pass_by_reference */
     uint32_t fn_flags;
     zend_string *function_name; //函数名
@@ -83,8 +89,8 @@ truct _zend_op_array {
     zend_op *opcodes; //opcode指令
 
     int last_var;
-    uint32_t T;
-    zend_string **vars;
+    uint32_t T; //临时变量数
+    zend_string **vars; //PHP变量名列表
 
     int last_brk_cont;
     int last_try_catch;
@@ -92,7 +98,7 @@ truct _zend_op_array {
     zend_try_catch_element *try_catch_array;
 
     /* static variables support */
-    HashTable *static_variables;
+    HashTable *static_variables; //静态变量符号表
 
     zend_string *filename;
     uint32_t line_start;
