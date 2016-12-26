@@ -154,7 +154,7 @@ opcode各字段含义下面展开说明。
 * IS_UNUSED   表示操作数没有使用
 * IS_CV       PHP变量，即脚本里定义的变量，这些变量是编译阶段确定的，所以是compile variable
 
-`result_type`除了上面几种类型外还有一种类型`EXT_TYPE_UNUSED (1<<5)`，返回值没有使用时会用到，这个值跟`IS_UNUSED`的区别尚不得知。
+`result_type`除了上面几种类型外还有一种类型`EXT_TYPE_UNUSED (1<<5)`，返回值没有使用时会用到，这个值跟`IS_UNUSED`的区别尚不得知，只找到Andi在2000年时一次提交注明的是` Unused results should be marked with EXT_TYPE_UNUSED and not IS_UNUSED`。
 
 ### 常量(字面量)、变量的读写
 
