@@ -33,4 +33,5 @@ union _zend_function {
 
 内部函数主要用到`internal_function`，而用户自定义函数编译完就是一个普通的opcode数组，因此是`op_array`，除了这两个上面还有一个`type`跟`common`，这俩是做什么用的呢？经过比较发现`zend_op_array`与`zend_internal_function`结构的起始位置都有`common`中的几个成员，如果你对C的内存比较了解应该会马上想到它们的用法，实际`common`可以看作是`op_array`、`internal_function`的header，不管是什么哪种函数都可以通过`zend_function.common.xx`快速访问到`zend_function.zend_op_array.xx`及`zend_function.zend_internal_function.xx`，下面几个，`type`同理，可以直接通过`zend_function.type`取到`zend_function.op_array.type`及`zend_function.internal_function.type`。
 
+![php function](img/php_function.jpg)
 
