@@ -62,16 +62,17 @@ err:
 
 ```c
 truct _zend_op_array {
+    //下面common是普通函数或类成员方法对应的opcodes使用的字段
     /* Common elements */
-    zend_uchar type;
+    zend_uchar type; //标示函数类型：用户自定义函数、PHP内部函数(扩展或内核提供的函数)
     zend_uchar arg_flags[3]; /* bitset of arg_info.pass_by_reference */
     uint32_t fn_flags;
-    zend_string *function_name;
-    zend_class_entry *scope;
+    zend_string *function_name; //函数名
+    zend_class_entry *scope; //所属class
     zend_function *prototype;
-    uint32_t num_args;
-    uint32_t required_num_args;
-    zend_arg_info *arg_info;
+    uint32_t num_args; //参数数量
+    uint32_t required_num_args; //必传参数数量
+    zend_arg_info *arg_info; //参数信息
     /* END of common elements */
 
     uint32_t *refcount;
