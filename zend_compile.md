@@ -10,9 +10,7 @@ C程序在编译时将一行行代码编译为机器码，每一个操作都认�
 
 所以PHP的解析过程任务就是将PHP代码转化为opcode数组，代码里的所有信息都保存在opcode中，然后将opcode数组交给zend引擎执行，opcode就是内核具体执行的命令，比如赋值、加减操作、函数调用等，每一条opcode都对应一个处理handle，这些handler全部是提前定义好的C函数。
 
-![zend_compile](img/zend_compile.png)
-
-从PHP代码到opcode是怎么实现的呢？首先想到的方式就是正则匹配，当然过程没有这么暴力。PHP编译过程包括词法分析、语法分析，使用re2c、bison完成，旧的PHP版本直接生成了opcode，PHP7新增了抽象语法树（AST），在语法分析阶段生成AST，然后再生成opcode数组。
+从PHP代码到opcode是怎么实现的？最容易想到的方式就是正则匹配，当然过程没有这么简单。PHP编译过程包括词法分析、语法分析，使用re2c、bison完成，旧的PHP版本直接生成了opcode，PHP7新增了抽象语法树（AST），在语法分析阶段生成AST，然后再生成opcode数组。
 
 re2c的示例:(http://re2c.org/examples/examples.html)
 ```c
@@ -64,7 +62,9 @@ err: ?
 err:
 ```
 
-最终生成的opcodes结构为：
+![zend_compile](img/zend_compile.png)
+
+最终生成的opcode数组结构为：
 
 ```c
 truct _zend_op_array {
@@ -128,6 +128,7 @@ struct _zend_op {
     zend_uchar result_type; //返回值类型
 };
 ```
+
 opcode各字段含义下面展开说明。
 
 ### 操作数
