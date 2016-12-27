@@ -42,3 +42,4 @@ union _zend_function {
 
 `EG(function_table)`是一个哈希表，记录的就是PHP中所有的函数。
 
+PHP在编译阶段将用户自定义的函数编译为独立的opcodes，保存在`EG(function_table)`中，调用时重新分配新的zend_execute_data(相当于运行栈)，然后执行函数的opcodes，调用完再还原到旧的`zend_execute_data`，继续执行，关于zend引擎execute阶段后面会详细分析。
