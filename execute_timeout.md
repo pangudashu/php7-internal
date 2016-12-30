@@ -11,7 +11,9 @@
 
 最终经过排查确定是因为访问redis没有设置读写超时，后端redis实例挂了导致请求阻塞而引发的故障，事故造成的影响非常严重，在故障期间整个服务完全不可用。
 
-事后我一直不解为什么超时会导致fpm的退出？于是看了下php及php-fpm的几个超时配置的实现，最终得到了答案。与这次事故相关的主要是两个配置：一个是php中的max_execution_time，另一个是fpm中的request_terminate_timeout，下面将根据这两个配置具体分析PHP内核是如何处理的。(源码版本:php-7.0.12)
+事后我一直不解为什么超时会导致fpm的退出？于是看了下php及php-fpm的几个超时配置的实现，最终得到了答案。事故是因为fpm配置的`request_terminate_timeout`导致的，此配置项的注释中写的很清楚：如果一个request的执行时间超过request_terminate_timeout，worker进程将被killed。
+
+此次事故引发我对PHP超时机制的进一步探究，我们知道PHP中还有一个与超时相关的配置:`max_execution_time`，那么`max_execution_time`、fpm的`request_terminate_timeout`源码里是如何处理的呢？下面将根据这两个配置具体分析PHP内核是如何处理的。(源码版本:php-7.0.12)
 
 ## 1、PHP的超时配置
 
@@ -20,12 +22,14 @@
 
 此配置默认值为60s，cli模式下被强制设为-1，关于这个参数没有什么可说的，不再展开分析，下面重点分析`max_execution_time`。
 
+- - -
+
 ### 1.2 max_execution_time
 此配置也在php.ini中，也就是说它是php的配置而不是fpm的，从源码注释上看这个配置的含义是：每个PHP脚本的最长执行时间。
 
 默认值为30s，cli模式下为0(即cli下此配置不生效)。
 
-从字面意义上猜测这个配置控制的是整个PHP脚本的最大执行耗时，也就是超过这个值PHP就不再执行了，那么导致fpm退出的原因是不是它造成的呢？我们用下面的例子测试下(max_execution_time = 10s)：
+从字面意义上猜测这个配置控制的是整个PHP脚本的最大执行耗时，也就是超过这个值PHP就不再执行了。我们用下面的例子测试下(max_execution_time = 10s)：
 ```
 //test.php
 <?php
@@ -64,7 +68,7 @@ PHPAPI int php_execute_script(zend_file_handle *primary_file)
     }zend_end_try();
 }
 ```
-之前的一篇画的一幅图已经介绍过`php_execute_script()`函数的先后调用顺序：`php_module_startup` -> `php_request_startup` -> `php_execute_script` -> `php_request_shutdown` -> `php_module_shutdown`，它是PHP脚本的具体解析、执行的入口，`max_execution_time`在这个位置设置的可以进一步确定它控制的是PHP的执行时长，我们再到`zend_set_timeout()`中看下（去除了一些windows的无关代码）：
+之前的一篇文章[《一张图看PHP框架的整体执行流程》](http://x.xiaojukeji.com/article.html?id=3906)画的一幅图已经介绍过`php_execute_script()`函数的先后调用顺序：`php_module_startup` -> `php_request_startup` -> `php_execute_script` -> `php_request_shutdown` -> `php_module_shutdown`，它是PHP脚本的具体解析、执行的入口，`max_execution_time`在这个位置设置的可以进一步确定它控制的是PHP的执行时长，我们再到`zend_set_timeout()`中看下（去除了一些windows的无关代码）：
 ```
 //Zend/zend_execute_API.c #line:1222
 void zend_set_timeout(zend_long seconds, int reset_signals)
@@ -161,7 +165,9 @@ while(1){
 ```
 将返回: 500 Internal Server Error。
 
-现在可以清楚上面测试例子为什么不是预期结果的原因了，文章开始提到的故障也是因为等待redis响应而导致fpm的worker进程挂起，那么worker进程退出的原因也是`max_execution_time`导致的吗？很显然，可能性很小，因为等待redis响应的时间并不在`ITIMER_PROF`计时内，我们接着从源码看下`max_execution_time`超时时PHP是如何中断执行、返回错误的。
+现在可以清楚上面测试例子为什么不是预期结果的原因了，文章开始提到的故障也是因为等待redis响应而导致fpm的worker进程挂起，等待redis响应的时间并不在`ITIMER_PROF`计时内，所以即使我们配的`max_execution_time < request_terminate_timeout`，也无法因为IO阻塞的原因而命中`max_execution_time`的限制，除非类似死循环这类导致长时间占用cpu的情况。
+
+我们接着从源码看下`max_execution_time`超时时PHP是如何中断执行、返回错误的。
 
 `zend_set_timeout()`函数中设定的`ITIMER_PROF`定时器超时信号处理函数为`zend_timeout()`：
 ```
@@ -306,10 +312,69 @@ PHPAPI int php_execute_script(zend_file_handle *primary_file)
 }
 ```
 更多siglongjmp、sigsetjmp的说明可以自行查下，[https://github.com/pangudashu/anywork/tree/master/try_catch](https://github.com/pangudashu/anywork/tree/master/try_catch)
-- - -
+
+现在你应该清楚`max_execution_time`的实现机制及用法了吧?
+
 最后总结一下__max_execution_time__的内核处理：PHP从执行`php_execute_script`开始活跃时间累计达到`max_execution_time`时，系统送出`SIGPROF`信号，此信号由__zend_timeout()__处理，最终内核调用__zend_bailout()__，回到开始执行的位置，结束`php_execute_script`执行，进入`php_request_shutdown`阶段。
 
+- - -
 
 ### 1.3 request_terminate_timeout
+上一节我们详细分析了PHP自身`max_execution_time`的实现原理，这一节我们再简单看下事故主因：`request_terminate_timeout`。
+
+这个配置属于php-fpm，注释写的是：一个request执行的最长时间，超过这个时间worker进程将被killed。
+
+php-fpm是多进程模型，与nginx类似，master负责管理worker进程，worker为进程阻塞模型，阻塞在accept请求上，每个worker同一时刻只能处理一个请求。master与worker之间可以进行通信，master可以启动、杀掉worker。
+
+这里不再对fpm详细说明，只简单看下`request_terminate_timeout`的处理：
+```
+//fpm_process_ctl.c
+void fpm_pctl_heartbeat(struct fpm_event_s *ev, short which, void *arg) 
+{
+    ...
+
+    if (which == FPM_EV_TIMEOUT) {
+        fpm_clock_get(&now);
+        fpm_pctl_check_request_timeout(&now);
+        return;
+    }
+    
+    ...
+    
+    fpm_event_set_timer(&heartbeat, FPM_EV_PERSIST, &fpm_pctl_heartbeat, NULL);
+    fpm_event_add(&heartbeat, fpm_globals.heartbeat);
+}
+
+static void fpm_pctl_check_request_timeout(struct timeval *now)
+{
+    ...
+    int terminate_timeout = wp->config->request_terminate_timeout; //php-fpm.conf中的request_terminate_timeout配置
+    int slowlog_timeout = wp->config->request_slowlog_timeout;
+
+    ...
+
+    fpm_request_check_timed_out(child, now, terminate_timeout, slowlog_timeout);
+    ...
+}
+```
+再看下`fpm_request_check_timed_out`:
+```
+//fpm_request.c
+void fpm_request_check_timed_out(struct fpm_child_s *child, struct timeval *now, int terminate_timeout, int slowlog_timeout)
+{
+    ...
+
+    if (terminate_timeout && tv.tv_sec >= terminate_timeout) {
+        ...
+
+        fpm_pctl_kill(child->pid, FPM_PCTL_TERM); //kill worker
+
+        zlog(...);
+    }
+}
+```
+可以看到，master如果发现worker处理一个request时间超过了`request_terminate_timeout`将发送TERM信号给worker，直接导致worker退出,而这个时间是从worker接到请求开始计时的，是系统时间。
+
+----
 
 ## 2、优化思路
