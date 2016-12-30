@@ -25,13 +25,24 @@
 
 默认值为30s，cli模式下为0(即cli下此配置不生效)。
 
-从字面意义上猜测这个配置控制的是PHP的脚本的最大执行耗时，也就是超过这个值PHP就不再执行了，那么导致fpm退出的原因是不是它造成的呢？我们用下面的例子测试下(max_execution_time = 10s)：
+从字面意义上猜测这个配置控制的是整个PHP脚本的最大执行耗时，也就是超过这个值PHP就不再执行了，那么导致fpm退出的原因是不是它造成的呢？我们用下面的例子测试下(max_execution_time = 10s)：
 ```
+//test.php
 <?php
 sleep(11);
 
-echo "hello";
+echo "hello~";
+?>
 ```
+`max_execution_time`配置的是10s，按照上面的猜测，浏览器请求test.php将因为超时不会有任何输出，并可能返回500以上的错误，我们来实际操作下（不要用cli执行）：
+```
+curl http://127.0.0.1:8000/test.php
+```
+结果输出：
+```
+hello~
+```
+
 
 ### 1.3 request_terminate_timeout
 
