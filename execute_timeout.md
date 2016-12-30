@@ -50,6 +50,8 @@ grep下发现`max_execution_time`在`php_execute_script()`函数中有一处使�
 PHPAPI int php_execute_script(zend_file_handle *primary_file)
 {
     ...
+
+    //注意zend_try，后面会用到
     zend_try {
         ...
         if (PG(max_input_time) != -1) {
@@ -159,7 +161,7 @@ while(1){
 ```
 将返回: 500 Internal Server Error。
 
-文章开始提到的故障就是因为PHP等待redis相应而引起fpm的worker进程挂起，而这段时间是不包含的`ITIMER_PROF`定时器的计时中的，所以可以确定fpm的退出并不是`max_execution_time`的原因，但是`max_execution_time`确实也是限制PHP执行的配置，我们接下来继续从源码看下`max_execution_time`超时时PHP是如何中断执行、返回错误的。
+现在可以清楚上面测试例子为什么不是预期结果的原因了，文章开始提到的故障也是因为等待redis响应而导致fpm的worker进程挂起，那么worker进程退出的原因也是`max_execution_time`导致的吗？很显然，可能性很小，因为等待redis响应的时间并不在`ITIMER_PROF`计时内，我们接着从源码看下`max_execution_time`超时时PHP是如何中断执行、返回错误的。
 
 `zend_set_timeout()`函数中设定的`ITIMER_PROF`定时器超时信号处理函数为`zend_timeout()`：
 ```
@@ -196,6 +198,116 @@ ZEND_API ZEND_COLD void zend_error(int type, const char *format, ...)
     ...
 }
 ```
+`zend_error_cb`是一个函数指针，它在`php_module_startup()`中定义：
+```
+//main/main.c #line:2011
+int php_module_startup(sapi_module_struct *sf, zend_module_entry *additional_modules, uint num_additional_modules)
+{
+    ...
+
+    zuf.error_function = php_error_cb;
+    ...
+
+    zend_startup(&zuf, NULL);
+    ...
+}
+
+//Zend/zend.c #line:632
+int zend_startup(zend_utility_functions *utility_functions, char **extensions)
+{
+    ...
+
+    zend_error_cb = utility_functions->error_function; //即：zend_error_cb = php_error_cb
+    ...
+}
+```
+最终调用的是`php_error_cb()`：
+```
+//main/main.c #line:973
+static ZEND_COLD void php_error_cb(int type, const char *error_filename, const uint error_lineno, const char *format, va_list args)
+{
+    ...
+
+    switch (type) {
+        ...
+        case E_ERROR:
+        case E_RECOVERABLE_ERROR:
+        case E_PARSE:
+        case E_COMPILE_ERROR:
+        case E_USER_ERROR:
+            ...
+            /* the parser would return 1 (failure), we can bail out nicely */
+            if (type == E_PARSE) {
+                CG(parse_error) = 0;
+            } else {
+                /* restore memory limit */
+                zend_set_memory_limit(PG(memory_limit));
+                efree(buffer);
+                zend_objects_store_mark_destructed(&EG(objects_store));
+                zend_bailout(); //终止执行，try-catch
+                return;
+            }
+        ...
+    }
+    ...
+}
+```
+再展开__zend_bailout()__：
+```
+//zend.h
+#define zend_bailout()      _zend_bailout(__FILE__, __LINE__)
+
+//zend.c #line:893
+ZEND_API ZEND_COLD void _zend_bailout(char *filename, uint lineno)
+{
+
+    if (!EG(bailout)) {
+        zend_output_debug_string(1, "%s(%d) : Bailed out without a bailout address!", filename, lineno);
+        exit(-1);
+    }
+    CG(unclean_shutdown) = 1;
+    CG(active_class_entry) = NULL;
+    CG(in_compilation) = 0;
+    EG(current_execute_data) = NULL;
+    LONGJMP( *EG(bailout), FAILURE);
+}
+
+//zend_portability.h
+# define SETJMP(a) sigsetjmp(a, 0)
+# define LONGJMP(a,b) siglongjmp(a, b)
+# define JMP_BUF sigjmp_buf
+```
+还记得上面`php_execute_script()`中在PHP脚本执行函数外的`zend_try{...}`吗？
+
+实际这是PHP里面实现的C语言层面的`try-catch`机制，try时利用__sigsetjmp()__将当前执行位置保存到__EG(bailout)__，中间执行抛出异常时利用__siglongjmp()__跳回到try保存的位置__EG(bailout)__，展开来看`php_execute_script`：
+```
+PHPAPI int php_execute_script(zend_file_handle *primary_file)
+{
+    ...
+
+    JMP_BUF *__orig_bailout = EG(bailout);
+    JMP_BUF __bailout; 
+
+    EG(bailout) = &__bailout;
+    if (SETJMP(__bailout)==0) { //初次设置时值为0，当执行LONGJMP时将跳回到这个位置，且值不为0，即从if之外的操作执行
+        ...
+
+        if (PG(max_input_time) != -1) {
+            ...
+            zend_set_timeout(INI_INT("max_execution_time"), 0);
+        }
+        ...
+
+        zend_execute_scripts(...); //parse -> execute
+    }
+    //zend_bailout()将接着从这里执行
+    EG(bailout) = __orig_bailout;
+    ...
+}
+```
+
+最后总结一下__max_execution_time__的内核处理：PHP从执行`php_execute_script`开始活跃时间累计达到`max_execution_time`时，系统送出`SIGPROF`信号，此信号由__zend_timeout()__处理，最终内核调用__zend_bailout()__，回到开始执行的位置，结束`php_execute_script`执行，进入`php_request_shutdown`阶段。
+
 
 ### 1.3 request_terminate_timeout
 
