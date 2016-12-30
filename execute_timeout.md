@@ -13,7 +13,7 @@
 
 事后我一直不解为什么超时会导致fpm的退出？于是看了下php及php-fpm的几个超时配置的实现，最终得到了答案。事故是因为fpm配置的`request_terminate_timeout`导致的，此配置项的注释中写的很清楚：如果一个request的执行时间超过request_terminate_timeout，worker进程将被killed。
 
-此次事故引发我对PHP超时机制的进一步探究，我们知道PHP中还有一个与超时相关的配置:`max_execution_time`，那么`max_execution_time`、fpm的`request_terminate_timeout`源码里是如何处理的呢？下面将根据这两个配置具体分析PHP内核是如何处理的。(源码版本:php-7.0.12)
+此次事故引发我对PHP超时机制的进一步探究，fpm的处理方式太过暴力，那么除了`request_terminate_timeout`还有没有别的超时控制项？PHP中还有一个配置:`max_execution_time`，它是否能够达到控制PHP请求超时的作用呢？`max_execution_time`、fpm的`request_terminate_timeout`源码里是如何处理的呢？下面将根据这两个配置具体分析PHP内核是如何处理的。(源码版本:php-7.0.12)
 
 ## 1、PHP的超时配置
 
