@@ -98,6 +98,26 @@ void zend_set_timeout(zend_long seconds, int reset_signals)
 如果你用过C语言里面的定时器看到这里应该明白`max_execution_time`的含义了吧？`zend_set_timeout`设定了一个间隔定时器(itimer)，类型为`ITIMER_PROF`，问题就出在这，这个类型计算的程序在用户态、内核态下的`执行`时长，下面简单说下linux下的定时器及程序执行耗时的计量。
 
 #### 1.2.1 间隔定时器itimer
+间隔定时器设定的接口setitimer定义如下，setitimer()为Linux的API，并非C语言的Standard Library，setitimer()有两个功能，一是指定一段时间后，才执行某个function，二是每间格一段时间就执行某个function。
+```
+int setitimer(int which, const struct itimerval *value, struct itimerval *ovalue));
+
+struct itimerval {
+    struct timeval it_interval; //it_value时间后每隔it_interval执行
+　　struct timeval it_value; //it_value时间后将开始执行
+};
+
+struct timeval {
+    long tv_sec;
+　　long tv_usec;
+};
+```
+which为定时器类型：
+* ITIMER_REAL : 以系统真实的时间来计算，它送出SIGALRM信号
+
+* ITIMER_VIRTUAL : 以该进程在用户态下花费的时间来计算，它送出SIGVTALRM信号
+
+* ITIMER_PROF : 以该进程在用户态下和内核态下所费的时间来计算，它送出SIGPROF信号
 
 #### 1.2.2 内核态、用户态
 
