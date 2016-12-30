@@ -113,11 +113,11 @@ struct timeval {
 };
 ```
 which为定时器类型：
-* ITIMER_REAL : 以系统真实的时间来计算，它送出SIGALRM信号
+* __ITIMER_REAL__ : 以系统真实的时间来计算，它送出SIGALRM信号
 
-* ITIMER_VIRTUAL : 以该进程在用户态下花费的时间来计算，它送出SIGVTALRM信号
+* __ITIMER_VIRTUAL__ : 以该进程在用户态下花费的时间来计算，它送出SIGVTALRM信号
 
-* ITIMER_PROF : 以该进程在用户态下和内核态下所费的时间来计算，它送出SIGPROF信号
+* __ITIMER_PROF__ : 以该进程在用户态下和内核态下所费的时间来计算，它送出SIGPROF信号
 
 #### 1.2.2 内核态、用户态
 
