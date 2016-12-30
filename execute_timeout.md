@@ -29,12 +29,12 @@
 ```
 //test.php
 <?php
-sleep(11);
+sleep(20);
 
 echo "hello~";
 ?>
 ```
-`max_execution_time`配置的是10s，按照上面的猜测，浏览器请求test.php将因为超时不会有任何输出，并可能返回500以上的错误，我们来实际操作下（不要用cli执行）：
+`max_execution_time`配置的是10s，按照上面的猜测，浏览器请求test.php将因为超时不会有任何输出，并可能返回某个500以上的错误，我们来实际操作下（不要用cli执行）：
 ```
 curl http://127.0.0.1:8000/test.php
 ```
@@ -42,7 +42,66 @@ curl http://127.0.0.1:8000/test.php
 ```
 hello~
 ```
+很遗憾，结果不是预期的那样，脚本执行的很顺利，并没有中断，难道`max_execution_time`配置对fpm无效？网上有些文章认为"如果php-fpm中设置了 request_terminate_timeout 的话，那么 max_execution_time 就不生效"，事实上这是错误的，这俩值是没有任何关联的，下面我们就深入PHP内核看`max_execution_time`究竟怎么用。
 
+grep下发现`max_execution_time`在`php_execute_script()`函数中有一处使用：
+```
+//main/main.c #line:2400
+PHPAPI int php_execute_script(zend_file_handle *primary_file)
+{
+    ...
+    zend_try {
+        ...
+        if (PG(max_input_time) != -1) {
+            ...
+            zend_set_timeout(INI_INT("max_execution_time"), 0);
+        }
+
+        ...
+        zend_execute_scripts(...);
+    }zend_end_try();
+}
+```
+之前的一篇画的一幅图已经介绍过`php_execute_script()`函数的先后调用顺序：`php_module_startup` -> `php_request_startup` -> `php_execute_script` -> `php_request_shutdown` -> `php_module_shutdown`，它是PHP脚本的具体解析、执行的入口，`max_execution_time`在这个位置设置的可以进一步确定它控制的是PHP的执行时长，我们再到`zend_set_timeout()`中看下（去除了一些windows的无关代码）：
+```
+//Zend/zend_execute_API.c #line:1222
+void zend_set_timeout(zend_long seconds, int reset_signals)
+{
+    EG(timeout_seconds) = seconds;
+    ...
+    {
+        struct itimerval t_r;       /* timeout requested */
+        int signo;
+
+        if(seconds) {
+            t_r.it_value.tv_sec = seconds;
+            t_r.it_value.tv_usec = t_r.it_interval.tv_sec = t_r.it_interval.tv_usec = 0;
+            setitimer(ITIMER_PROF, &t_r, NULL); //设定一个定时器，seconds秒后触发，到达时间后将发出ITIMER_PROF信号
+        }
+        signo = SIGPROF;
+
+        if (reset_signals) {
+#   ifdef ZEND_SIGNALS
+            zend_signal(signo, zend_timeout);
+#   else
+            sigset_t sigset;
+
+            signal(signo, zend_timeout); //设置信号处理函数，这个例子中就是设置ITIMER_PROF信号由zend_timeout()处理
+            sigemptyset(&sigset);
+            sigaddset(&sigset, signo);
+            sigprocmask(SIG_UNBLOCK, &sigset, NULL);
+#   endif
+        }
+    }
+}
+```
+如果你用过C语言里面的定时器看到这里应该明白`max_execution_time`的含义了吧？`zend_set_timeout`设定了一个间隔定时器(itimer)，类型为`ITIMER_PROF`，问题就出在这，这个类型计算的程序在用户态、内核态下的`执行`时长，下面简单说下linux下的定时器及程序执行耗时的计量。
+
+#### 1.2.1 间隔定时器itimer
+
+#### 1.2.2 内核态、用户态
+
+#### 1.2.3 linux下程序的执行耗时
 
 ### 1.3 request_terminate_timeout
 
