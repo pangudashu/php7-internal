@@ -305,7 +305,8 @@ PHPAPI int php_execute_script(zend_file_handle *primary_file)
     ...
 }
 ```
-
+更多siglongjmp、sigsetjmp的说明可以自行查下，[https://github.com/pangudashu/anywork/tree/master/try_catch](https://github.com/pangudashu/anywork/tree/master/try_catch)
+- - -
 最后总结一下__max_execution_time__的内核处理：PHP从执行`php_execute_script`开始活跃时间累计达到`max_execution_time`时，系统送出`SIGPROF`信号，此信号由__zend_timeout()__处理，最终内核调用__zend_bailout()__，回到开始执行的位置，结束`php_execute_script`执行，进入`php_request_shutdown`阶段。
 
 
