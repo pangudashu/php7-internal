@@ -380,6 +380,6 @@ void fpm_request_check_timed_out(struct fpm_child_s *child, struct timeval *now,
 
 当然业务层面的优化才是根本解决之道，这里说的只是最后的一层防护，避免因为代码的疏漏导致业务雪崩，出现问题的时候尽量减小影响、尽快定位出现问题的地方。
 
-最容易想到的优化就是将上面提到的超时定时器类型改为：`ITIMER_REAL`，关于这个方案我用PHP扩展实现了一个，通过callback回调机制控制一个函数的执行时间，具体可以看下代码：[https://github.com/pangudashu/timeout](https://github.com/pangudashu/timeout)，同一种定时器，linux下每个进程只支持一个，所以目前不支持嵌套调用，可以适当修改支持多定时器。
+最容易想到的优化就是将上面提到的超时定时器类型改为：`ITIMER_REAL`，关于这个方案我用PHP扩展实现了一个，通过callback回调机制控制一个函数的执行时间，有兴趣的具体可以翻下代码：[https://github.com/pangudashu/timeout](https://github.com/pangudashu/timeout)，因为同一种定时器，linux下每个进程同一时刻只支持一个，所以目前不支持嵌套调用，可以适当修改支持多定时器。
 
 
