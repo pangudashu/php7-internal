@@ -11,9 +11,9 @@
 
 最终经过排查确定是因为访问redis没有设置读写超时，后端redis实例挂了导致请求阻塞而引发的故障，事故造成的影响非常严重，在故障期间整个服务完全不可用。
 
-事后我一直不解为什么超时会导致fpm的退出？于是看了下php及php-fpm的几个超时配置的实现，最终得到了答案。事故是因为fpm配置的`request_terminate_timeout`导致的，此配置项的注释中写的很清楚：如果一个request的执行时间超过request_terminate_timeout，worker进程将被killed。
+事后一直不解为什么超时会导致fpm的退出？php-fpm.conf配置里有个：`request_terminate_timeout`，正是它导致fpm的退出，此配置项的注释中写的很清楚：如果一个request的执行时间超过request_terminate_timeout，worker进程将被killed。
 
-此次事故引发我对PHP超时机制的进一步探究，fpm的处理方式太过暴力，那么除了`request_terminate_timeout`还有没有别的超时控制项？PHP中还有一个配置:`max_execution_time`，它是否能够达到控制PHP请求超时的作用呢？`max_execution_time`、fpm的`request_terminate_timeout`源码里是如何处理的呢？下面将根据这两个配置具体分析PHP内核是如何处理的。(源码版本:php-7.0.12)
+此次事故引发我对PHP超时机制的进一步探究，fpm的处理方式太过暴力，那么除了`request_terminate_timeout`还有没有别的超时控制项可以避免这类问题？下面将根据PHP中几个涉及超时的配置分析内核是如何处理的。(版本:php-7.0.12)
 
 ## 1、PHP的超时配置
 
@@ -44,9 +44,9 @@ curl http://127.0.0.1:8000/test.php
 ```
 hello~
 ```
-很遗憾，结果不是预期的那样，脚本执行的很顺利，并没有中断，难道`max_execution_time`配置对fpm无效？网上有些文章认为"如果php-fpm中设置了 request_terminate_timeout 的话，那么 max_execution_time 就不生效"，事实上这是错误的，这俩值是没有任何关联的，下面我们就深入PHP内核看`max_execution_time`究竟怎么用。
+很遗憾，结果不是预期的那样，脚本执行的很顺利，并没有中断，难道`max_execution_time`配置对fpm无效？网上有些文章认为"如果php-fpm中设置了 request_terminate_timeout 的话，那么 max_execution_time 就不生效"，事实上这是错误的，这俩值是没有任何关联的，下面我们就从内核看下`max_execution_time`具体的实现。
 
-grep下发现`max_execution_time`在`php_execute_script()`函数中有一处使用：
+`max_execution_time`在`php_execute_script()`函数中使用的：
 ```
 //main/main.c #line:2400
 PHPAPI int php_execute_script(zend_file_handle *primary_file)
@@ -56,7 +56,7 @@ PHPAPI int php_execute_script(zend_file_handle *primary_file)
     //注意zend_try，后面会用到
     zend_try {
         ...
-        if (PG(max_input_time) != -1) {
+        if (PG(max_input_time) != -1) { //非cli模式
             ...
             zend_set_timeout(INI_INT("max_execution_time"), 0);
         }
@@ -99,7 +99,7 @@ void zend_set_timeout(zend_long seconds, int reset_signals)
     }
 }
 ```
-如果你用过C语言里面的定时器看到这里应该明白`max_execution_time`的含义了吧？`zend_set_timeout`设定了一个间隔定时器(itimer)，类型为`ITIMER_PROF`，问题就出在这，这个类型计算的程序在用户态、内核态下的`执行`时长，下面简单说下linux下的定时器及程序执行耗时的计量。
+如果你用过C语言里面的定时器看到这里应该明白`max_execution_time`的含义了吧？`zend_set_timeout`设定了一个间隔定时器(itimer)，类型为`ITIMER_PROF`，问题就出在这，这个类型计算的程序在用户态、内核态下的`执行`时长，下面简单介绍下linux几种不同类型的定时器。
 
 #### a. 间隔定时器itimer
 间隔定时器设定的接口setitimer定义如下，setitimer()为Linux的API，并非C语言的Standard Library，setitimer()有两个功能，一是指定一段时间后，才执行某个function，二是每间格一段时间就执行某个function。
@@ -150,10 +150,9 @@ xiaoju   26700  0.0  0.2 207812  5340 ?        S    Dec28   0:16 php-fpm: pool w
 ```
 ps命令进程的状态：R 正在运行或可运行  S 可中断睡眠 (休眠中, 受阻, 在等待某个条件的形成或接受到信号)。
 
-
 最后我们回到PHP，总结一下：
 
-`ITIMER_VIRTUAL`定时器只会在`用户态`下倒计时，在内核态下将停止倒计时，`ITIMER_PROF`在两种状态下都倒计时，`ITIMER_REAL`则以系统实际时间倒计时，因为除了这两种状态，程序还有一种状态:`挂起`，也就是说`ITIMER_REAL`之外的两种定时器记录的都是进程的活跃状态，也就是cpu忙碌的状态，而读写文件、sleep、socket等操作因为等待时间发生而挂起的时间则不包括。到这里你应该已经明白我们上面例子`max_execution_time`为什么"不生效"的原因了吧？这个时间限制的是__执行__时间，不含io阻塞、sleep时长，所以PHP脚本的实际执行时间远远大于`max_execution_time`的设定。
+`ITIMER_VIRTUAL`定时器只会在`用户态`下倒计时，在内核态下将停止倒计时，`ITIMER_PROF`在两种状态下都倒计时，`ITIMER_REAL`则以系统实际时间倒计时，因为除了这两种状态，程序还有一种状态:`挂起`，也就是说`ITIMER_REAL`之外的两种定时器记录的都是进程的活跃状态，也就是cpu忙碌的状态，而读写文件、sleep、socket等操作因为等待时间发生而挂起的时间则不包括。这就是为什么上面测试脚本执行的时间比`max_execution_time`长的原因。这个时间限制的是__执行__时间，不含io阻塞、sleep等等进程挂起的时长，所以PHP脚本的实际执行时间远远大于`max_execution_time`的设定。
 
 所以如果PHP里的定时器`setitimer`用的是`ITIMER_REAL`或者用下面的代码测试，上面的例子结果就是我们预期了。
 ```
@@ -319,11 +318,11 @@ PHPAPI int php_execute_script(zend_file_handle *primary_file)
 - - -
 
 ### 1.3 request_terminate_timeout
-上一节我们详细分析了PHP自身`max_execution_time`的实现原理，这一节我们再简单看下事故主因：`request_terminate_timeout`。
+上一节我们详细分析了PHP自身`max_execution_time`的实现原理，这一节我们再简单看下fpm退出主因：`request_terminate_timeout`。
 
 这个配置属于php-fpm，注释写的是：一个request执行的最长时间，超过这个时间worker进程将被killed。
 
-php-fpm是多进程模型，与nginx类似，master负责管理worker进程，worker为进程阻塞模型，阻塞在accept请求上，每个worker同一时刻只能处理一个请求。master与worker之间可以进行通信，master可以启动、杀掉worker。
+php-fpm是多进程模型，与nginx类似，master负责管理worker进程，worker为进程阻塞模型，每个worker同一时刻只能处理一个请求。master与worker之间可以进行通信，master可以启动、杀掉worker。
 
 这里不再对fpm详细说明，只简单看下`request_terminate_timeout`的处理：
 ```
@@ -377,3 +376,10 @@ void fpm_request_check_timed_out(struct fpm_child_s *child, struct timeval *now,
 ----
 
 ## 2、优化思路
+上面分析了`request_terminate_timeout`及`max_execution_time`，两者在PHP脚本执行超时的控制上都有一些欠缺，首先fpm的处理，虽然直接kill调进程是最简单的方式，但对于业务而言成本太高，个别接口超时严重这种处理方式将直接导致所有的worker进程处于不断的重启状态，每一个进程只处理一个请求就被干掉了；另外`max_execution_time`的限制实际没有太大意义。
+
+当然业务层面的优化才是根本解决之道，这里说的只是最后的一层防护，避免因为代码的疏漏导致业务雪崩，出现问题的时候尽量减小影响、尽快定位出现问题的地方。
+
+最容易想到的优化就是将上面提到的超时定时器类型改为：`ITIMER_REAL`，关于这个方案我用PHP扩展实现了一个，通过callback回调机制控制一个函数的执行时间，具体可以看下代码：[https://github.com/pangudashu/timeout](https://github.com/pangudashu/timeout)，同一种定时器，linux下每个进程只支持一个，所以目前不支持嵌套调用，可以适当修改支持多定时器。
+
+
