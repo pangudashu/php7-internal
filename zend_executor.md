@@ -58,7 +58,6 @@ void execute(int []op_array)
                 ...
             case opcode_2:
                 ...
-            
             ...
         }
 
@@ -67,3 +66,6 @@ void execute(int []op_array)
 }
 
 ```
+三种模式效率是不同的，GOTO最快，怎么选择其它模式呢？下载PHP源码后不要直接编译，Zend目录下有个文件：`zend_vm_gen.php`，在编译PHP前执行：`php zend_vm_gen.php --with-vm-kind=CALL|SWITCH|GOTO`，这个脚本将重新生成:`zend_vm_opcodes.h`、`zend_vm_opcodes.c`、`zend_vm_execute.h`三个文件覆盖原来的，然后再编译PHP。
+
+
