@@ -162,6 +162,30 @@ ZEND_API zend_executor_globals executor_globals;
 
 ## 5、执行流程
 
+执行期间会分配一个或多个`zend_execute_data`结构：
+```c
+#define EX(element)             ((execute_data)->element)
+
+//zend_compile.h
+struct _zend_execute_data {
+    const zend_op       *opline;  //指向当前执行的opcode，初始时指向zend_op_array起始位置
+    zend_execute_data   *call;             /* current call                   */
+    zval                *return_value;  //返回值指针 */
+    zend_function       *func;          //当前执行的函数（非函数调用时为空）
+    zval                 This;          //this + call_info + num_args
+    zend_class_entry    *called_scope;  //当前call的类
+    zend_execute_data   *prev_execute_data; //函数调用时指向调用位置作用空间
+    zend_array          *symbol_table; //全局变量符号表
+#if ZEND_EX_USE_RUN_TIME_CACHE
+    void               **run_time_cache;   /* cache op_array->run_time_cache */
+#endif
+#if ZEND_EX_USE_LITERALS
+    zval                *literals;  //字面量数组，与func.op_array->literals相同
+#endif
+};
+```
+注意：在执行前分配内存时并不仅仅是分配了`zend_execute_data`大小的空间，除了`sizeof(zend_execute_data)`外还会额外申请一块空间，用于分配局部变量、中间变量等，具体的分配过程下面会讲到。
+
 Zend执行opcode的过程简单的描述为以下步骤：
 * step1: 为当前作用域分配一块内存，充当运行栈，zend_execute_data结构、所有局部变量、中间变量等等都在此内存上分配
 * step2: 初始化全局变量符号表，然后将全局执行位置指针EG(current_execute_data)指向step1新分配的zend_execute_data，然后将zend_execute_data.opline指向op_array的起始位置
@@ -170,6 +194,8 @@ Zend执行opcode的过程简单的描述为以下步骤：
     * step3.2: 如果是函数调用，则首先从EG(function_table)中根据function_name取出此function对应的编译完成的zend_op_array，然后像step1一样新分配一个zend_execute_data结构，将EG(current_execute_data)赋值给新结构的`prev_execute_data`，再将EG(current_execute_data)指向新的zend_execute_data，最后从新的`zend_execute_data.opline`开始执行，切换到函数内部，函数执行完以后将EG(current_execute_data)重新指向EX(prev_execute_data)，释放分配的运行栈，销毁局部变量，继续从原来函数调用的位置执行
     * step3.3: 类方法的调用与函数基本相同，后面分析对象实现的时候再详细分析
 * step4: 全部opcode执行完成后将step1分配的内存释放，这个过程会将所有的局部变量"销毁"，执行阶段结束
+
+![zend_execute](img/zend_execute_data.png)
 
 Zend执行的入口位于`zend_vm_execute.h`文件中的__zend_execute()__：
 
@@ -196,9 +222,7 @@ ZEND_API void zend_execute(zend_op_array *op_array, zval *return_value)
     zend_vm_stack_free_call_frame(execute_data); //释放execute_data:销毁所有的PHP变量
 }
 
-#define EX(element)             ((execute_data)->element)
 ```
-这个过程主要分了三步：首先分配运行时关键的结构分配zend_execute_data（可以理解为分配运行栈）并初始化，然后执行opcode，最后释放zend_execute_data。
 
 
 
