@@ -1,7 +1,29 @@
 # Zend引擎执行过程
 
+Zend虚拟机主要由两部分组成：编译、执行。
+
+## opcode
+opcode是将PHP代码编译产生的Zend虚拟机可识别的指令。
+
+```c
+struct _zend_op {
+    const void *handler; //指令执行handler
+    znode_op op1;   //操作数1
+    znode_op op2;   //操作数2
+    znode_op result; //返回值
+    uint32_t extended_value; 
+    uint32_t lineno; 
+    zend_uchar opcode;  //opcode指令
+    zend_uchar op1_type; //操作数1类型
+    zend_uchar op2_type; //操作数2类型
+    zend_uchar result_type; //返回值类型
+};
+```
+
 ## zend_op_array结构
-`zend_op_array`zend引擎执行阶段的输入。
+`zend_op_array`是Zend引擎执行阶段的输入，是opcode的集合。
+
+![zend_op_array](../img/oparray-1.png)
 
 ```c
 truct _zend_op_array {
@@ -22,7 +44,7 @@ truct _zend_op_array {
     uint32_t this_var;
 
     uint32_t last;
-    zend_op *opcodes; //opcode指令
+    zend_op *opcodes; //opcode指令数组
 
     int last_var;
     uint32_t T; //临时变量数
@@ -51,18 +73,6 @@ truct _zend_op_array {
     void *reserved[ZEND_MAX_RESERVED_RESOURCES];
 };
 
-struct _zend_op {
-    const void *handler; //指令执行handler
-    znode_op op1;   //操作数1
-    znode_op op2;   //操作数2
-    znode_op result; //返回值
-    uint32_t extended_value; 
-    uint32_t lineno; 
-    zend_uchar opcode;  //opcode指令
-    zend_uchar op1_type; //操作数1类型
-    zend_uchar op2_type; //操作数2类型
-    zend_uchar result_type; //返回值类型
-};
 ```
 
 ## opcode执行方式
