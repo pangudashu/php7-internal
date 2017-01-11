@@ -2,12 +2,12 @@
 
 Zend虚拟机主要由两部分组成：编译、执行。
 
-## opcode
-opcode是将PHP代码编译产生的Zend虚拟机可识别的指令。
+## 1、opcode
+opcode是将PHP代码编译产生的Zend虚拟机可识别的指令，php7共有173个opcode，定义在`zend_vm_opcodes.h`中，PHP中的所有语法实现都是由这些opcode组成的。
 
 ```c
 struct _zend_op {
-    const void *handler; //指令执行handler
+    const void *handler; //对应执行的C语言function，即每条opcode都有一个C function处理
     znode_op op1;   //操作数1
     znode_op op2;   //操作数2
     znode_op result; //返回值
@@ -20,8 +20,8 @@ struct _zend_op {
 };
 ```
 
-## zend_op_array结构
-`zend_op_array`是Zend引擎执行阶段的输入，是opcode的集合。
+## 2、zend_op_array结构
+`zend_op_array`是Zend引擎执行阶段的输入，是opcode的集合(当然并不仅仅如此)。
 
 ![zend_op_array](img/oparray-1.png)
 
@@ -75,7 +75,7 @@ truct _zend_op_array {
 
 ```
 
-## opcode执行方式
+## 3、opcode执行方式
 PHP代码编译为opcode数组：zend_op_array，然后逐条执行，在执行的方式上zend提供了三种不同的方式：CALL、SWITCH、GOTO，默认方式为CALL，下面具体解释下这个是什么意思。
 
 每个opcode都代表了一些特定的处理操作，这个东西怎么提供呢？一种是把每种opcode负责的工作封装成一个function，然后执行器循环执行即可，这就是`CALL`模式的工作方式；另外一种是把所有opcode的处理方式通过C语言里面的label标签区分开，然后执行器执行的时候goto到相应的位置处理，这就是`GOTO`模式的工作方式；最后还有一种方式是把所有的处理方式写到一个switch下，然后通过case不同的opcode执行具体的操作，这就是`SWITCH`模式的工作方式。
@@ -144,4 +144,50 @@ void execute(int []op_array)
 
 后面分析的过程使用的都是默认模式`CALL`。
 
-## 
+## 4、zend_executor_globals(EG)
+`zend_executor_globals executor_globals`是PHP整个生命周期中最主要的一个结构，是一个全局变量，在main执行前分配(非ZTS下)，经常见到的一个宏`EG`操作的就是这个结构。
+```c
+//zend_compile.c
+#ifndef ZTS
+ZEND_API zend_compiler_globals compiler_globals;
+ZEND_API zend_executor_globals executor_globals;
+#endif
+
+//zend_globals_macros.h
+# define EG(v) (executor_globals.v)
+```
+![EG](img/EG.png)
+
+## 5、执行流程
+Zend执行的入口位于`zend_vm_execute.h`文件中的__zend_execute()__：
+
+```c
+ZEND_API void zend_execute(zend_op_array *op_array, zval *return_value)
+{
+    zend_execute_data *execute_data;
+
+    if (EG(exception) != NULL) {
+        return;
+    }
+
+    //分配zend_execute_data
+    execute_data = zend_vm_stack_push_call_frame(ZEND_CALL_TOP_CODE,
+            (zend_function*)op_array, 0, zend_get_called_scope(EG(current_execute_data)), zend_get_this_object(EG(current_execute_data)));
+    if (EG(current_execute_data)) {
+        execute_data->symbol_table = zend_rebuild_symbol_table();
+    } else {
+        execute_data->symbol_table = &EG(symbol_table);
+    }
+    EX(prev_execute_data) = EG(current_execute_data); //=> execute_data->prev_execute_data = EG(current_execute_data);
+    i_init_execute_data(execute_data, op_array, return_value); //初始化execute_data
+    zend_execute_ex(execute_data); //执行opcode
+    zend_vm_stack_free_call_frame(execute_data); //释放execute_data:销毁所有的PHP变量
+}
+
+#define EX(element)             ((execute_data)->element)
+```
+这个过程主要分了三步：首先分配运行时关键的结构分配zend_execute_data（可以理解为分配运行栈）并初始化，然后执行opcode，最后释放zend_execute_data。
+
+这里还有部分EG操作，EG(current_execute_data)指向的是当前正在执行的zend_execute_data，类似二进制程序执行中的`Esp/Ebp`指针
+
+
