@@ -145,7 +145,7 @@ void execute(int []op_array)
 后面分析的过程使用的都是默认模式`CALL`。
 
 ## 4、zend_executor_globals(EG)
-`zend_executor_globals executor_globals`是PHP整个生命周期中最主要的一个结构，是一个全局变量，在main执行前分配(非ZTS下)，经常见到的一个宏`EG`操作的就是这个结构。
+`zend_executor_globals executor_globals`是PHP整个生命周期中最主要的一个结构，是一个全局变量，在main执行前分配(非ZTS下)，直到PHP退出，经常见到的一个宏`EG`操作的就是这个结构。
 ```c
 //zend_compile.c
 #ifndef ZTS
@@ -156,6 +156,8 @@ ZEND_API zend_executor_globals executor_globals;
 //zend_globals_macros.h
 # define EG(v) (executor_globals.v)
 ```
+`zend_executor_globals`结构非常大，定义在`zend_globals.h`中，比较重要的几个字段含义如下图所示：
+
 ![EG](img/EG.png)
 
 ## 5、执行流程
