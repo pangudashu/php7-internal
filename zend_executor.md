@@ -161,6 +161,16 @@ ZEND_API zend_executor_globals executor_globals;
 ![EG](img/EG.png)
 
 ## 5、执行流程
+
+Zend执行opcode的过程简单的描述为以下步骤：
+* step1: 为当前作用域分配一块内存，充当运行栈，zend_execute_data结构、所有局部变量、中间变量等等都在此内存上分配
+* step2: 初始化全局变量符号表，然后将全局执行位置指针EG(current_execute_data)指向step1新分配的zend_execute_data，然后将zend_execute_data.opline指向op_array的起始位置
+* step3: 从EX(opline)开始调用各opcode的C处理handler(即_zend_op.handler)，每执行完一条opcode将`EX(opline)++`继续执行下一条，直到执行完全部opcode，函数/类成员方法调用、if的执行过程：
+    * step3.1: if语句将根据条件的成立与否决定`EX(opline) + offset`所加的偏移量，实现跳转
+    * step3.2: 如果是函数调用，则首先从EG(function_table)中根据function_name取出此function对应的编译完成的zend_op_array，然后像step1一样新分配一个zend_execute_data结构，将EG(current_execute_data)赋值给新结构的`prev_execute_data`，再将EG(current_execute_data)指向新的zend_execute_data，最后从新的`zend_execute_data.opline`开始执行，切换到函数内部，函数执行完以后将EG(current_execute_data)重新指向EX(prev_execute_data)，释放分配的运行栈，销毁局部变量，继续从原来函数调用的位置执行
+    * step3.3: 类方法的调用与函数基本相同，后面分析对象实现的时候再详细分析
+* step4: 全部opcode执行完成后将step1分配的内存释放，这个过程会将所有的局部变量"销毁"，执行阶段结束
+
 Zend执行的入口位于`zend_vm_execute.h`文件中的__zend_execute()__：
 
 ```c
@@ -190,6 +200,5 @@ ZEND_API void zend_execute(zend_op_array *op_array, zval *return_value)
 ```
 这个过程主要分了三步：首先分配运行时关键的结构分配zend_execute_data（可以理解为分配运行栈）并初始化，然后执行opcode，最后释放zend_execute_data。
 
-这里还有部分EG操作，EG(current_execute_data)指向的是当前正在执行的zend_execute_data，类似二进制程序执行中的`Esp/Ebp`指针
 
 
