@@ -1,5 +1,69 @@
-# Zend执行引擎
+# Zend引擎执行过程
 
+## zend_op_array结构
+`zend_op_array`zend引擎执行阶段的输入。
+
+```c
+truct _zend_op_array {
+    /* Common elements */
+    zend_uchar type; //标识函数类型：1为PHP内部函数(扩展或内核提供的函数)、2为用户自定义函数(即PHP代码中写的function)
+    zend_uchar arg_flags[3]; /* bitset of arg_info.pass_by_reference */
+    uint32_t fn_flags;
+    zend_string *function_name; //函数名
+    zend_class_entry *scope; //所属class
+    zend_function *prototype;
+    uint32_t num_args; //参数数量
+    uint32_t required_num_args; //必传参数数量
+    zend_arg_info *arg_info; //参数信息
+    /* END of common elements */
+
+    uint32_t *refcount;
+
+    uint32_t this_var;
+
+    uint32_t last;
+    zend_op *opcodes; //opcode指令
+
+    int last_var;
+    uint32_t T; //临时变量数
+    zend_string **vars; //PHP变量名列表
+
+    int last_brk_cont;
+    int last_try_catch;
+    zend_brk_cont_element *brk_cont_array;
+    zend_try_catch_element *try_catch_array;
+
+    /* static variables support */
+    HashTable *static_variables; //静态变量符号表
+
+    zend_string *filename; //PHP文件路径
+    uint32_t line_start;
+    uint32_t line_end;
+    zend_string *doc_comment;
+    uint32_t early_binding; /* the linked list of delayed declarations */
+
+    int last_literal; 
+    zval *literals; //字面量(常量)数组
+
+    int  cache_size;
+    void **run_time_cache;
+
+    void *reserved[ZEND_MAX_RESERVED_RESOURCES];
+};
+
+struct _zend_op {
+    const void *handler; //指令执行handler
+    znode_op op1;   //操作数1
+    znode_op op2;   //操作数2
+    znode_op result; //返回值
+    uint32_t extended_value; 
+    uint32_t lineno; 
+    zend_uchar opcode;  //opcode指令
+    zend_uchar op1_type; //操作数1类型
+    zend_uchar op2_type; //操作数2类型
+    zend_uchar result_type; //返回值类型
+};
+```
 
 ## opcode执行方式
 PHP代码编译为opcode数组：zend_op_array，然后逐条执行，在执行的方式上zend提供了三种不同的方式：CALL、SWITCH、GOTO，默认方式为CALL，下面具体解释下这个是什么意思。
@@ -66,8 +130,8 @@ void execute(int []op_array)
 }
 
 ```
-三种模式效率是不同的，GOTO最快，怎么选择其它模式呢？下载PHP源码后不要直接编译，Zend目录下有个文件：`zend_vm_gen.php`，在编译PHP前执行：`php zend_vm_gen.php --with-vm-kind=CALL|SWITCH|GOTO`，这个脚本将重新生成:`zend_vm_opcodes.h`、`zend_vm_opcodes.c`、`zend_vm_execute.h`三个文件覆盖原来的，然后再编译PHP（`--with-vm-kind`这个参数不是编译时的，不要`./configure --with-vm-kind=XX`）。
+三种模式效率是不同的，GOTO最快，怎么选择其它模式呢？下载PHP源码后不要直接编译，Zend目录下有个文件：`zend_vm_gen.php`，在编译PHP前执行：`php zend_vm_gen.php --with-vm-kind=CALL|SWITCH|GOTO`，这个脚本将重新生成:`zend_vm_opcodes.h`、`zend_vm_opcodes.c`、`zend_vm_execute.h`三个文件覆盖原来的，然后再编译PHP即可。
 
+后面分析的过程使用的都是默认模式`CALL`。
 
-
-
+## 

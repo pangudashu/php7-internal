@@ -1,6 +1,6 @@
 # PHP代码的编译
 
-PHP是解析型高级语言，事实上从内核的角度来看PHP就是一个普通的C程序，它有main函数，我们写的PHP代码是这个程序的输入，然后经过内核的处理输出结果，内核将PHP代码"翻译"为C程序可识别的过程就是PHP的编译。
+PHP是解析型高级语言，事实上从Zend内核的角度来看PHP就是一个普通的C程序，它有main函数，我们写的PHP代码是这个程序的输入，然后经过内核的处理输出结果，内核将PHP代码"翻译"为C程序可识别的过程就是PHP的编译。
 
 那么这个"翻译"过程具体都有哪些操作呢？
 
@@ -70,7 +70,7 @@ err:
 truct _zend_op_array {
     //common是普通函数或类成员方法对应的opcodes快速访问时使用的字段，后面分析PHP函数实现的时候会详细讲
     /* Common elements */
-    zend_uchar type; //标示函数类型：1为PHP内部函数(扩展或内核提供的函数)、2为用户自定义函数(即PHP代码中写的function)
+    zend_uchar type; //标识函数类型：1为PHP内部函数(扩展或内核提供的函数)、2为用户自定义函数(即PHP代码中写的function)
     zend_uchar arg_flags[3]; /* bitset of arg_info.pass_by_reference */
     uint32_t fn_flags;
     zend_string *function_name; //函数名
@@ -207,5 +207,4 @@ $a = 56;
 $b = "hello";
 ```
 `56`通过`(zval*)(_zend_op_array->literals + 0)`取到，`hello`通过`(zval*)(_zend_op_array->literals + 16)`取到,具体变量的读写操作将在执行阶段详细分析，这里只分析编译阶段的操作。
-
 
