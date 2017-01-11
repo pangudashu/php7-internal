@@ -23,7 +23,7 @@ struct _zend_op {
 ## zend_op_array结构
 `zend_op_array`是Zend引擎执行阶段的输入，是opcode的集合。
 
-![zend_op_array](../img/oparray-1.png)
+![zend_op_array](img/oparray-1.png)
 
 ```c
 truct _zend_op_array {
