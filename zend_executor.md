@@ -1,8 +1,11 @@
 # Zend引擎执行过程
 
-Zend虚拟机主要由两部分组成：编译、执行。
+前面分析了Zend的编译过程以及PHP用户函数的实现，接下来分析下Zend引擎的执行过程。
 
-## 1、opcode
+## 1、数据结构
+执行流程中有几个重要的数据结构，先看下这几个结构。
+
+### 1.1、opcode
 opcode是将PHP代码编译产生的Zend虚拟机可识别的指令，php7共有173个opcode，定义在`zend_vm_opcodes.h`中，PHP中的所有语法实现都是由这些opcode组成的。
 
 ```c
@@ -20,7 +23,7 @@ struct _zend_op {
 };
 ```
 
-## 2、zend_op_array结构
+### 1.2、zend_op_array
 `zend_op_array`是Zend引擎执行阶段的输入，是opcode的集合(当然并不仅仅如此)。
 
 ![zend_op_array](img/oparray-1.png)
@@ -75,7 +78,48 @@ truct _zend_op_array {
 
 ```
 
-## 3、opcode执行方式
+### 1.3、zend_executor_globals
+`zend_executor_globals executor_globals`是PHP整个生命周期中最主要的一个结构，是一个全局变量，在main执行前分配(非ZTS下)，直到PHP退出，它记录着当前请求全部的信息，经常见到的一个宏`EG`操作的就是这个结构。
+```c
+//zend_compile.c
+#ifndef ZTS
+ZEND_API zend_compiler_globals compiler_globals;
+ZEND_API zend_executor_globals executor_globals;
+#endif
+
+//zend_globals_macros.h
+# define EG(v) (executor_globals.v)
+```
+`zend_executor_globals`结构非常大，定义在`zend_globals.h`中，比较重要的几个字段含义如下图所示：
+
+![EG](img/EG.png)
+
+### 1.4、zend_execute_data
+`zend_execute_data`是执行过程中最核心的一个结构，它代表了当前的作用域、代码的执行位置以及局部变量的分配等等，后面分析具体执行流程的时候会详细分析其作用。
+
+```c
+#define EX(element)             ((execute_data)->element)
+
+//zend_compile.h
+struct _zend_execute_data {
+    const zend_op       *opline;  //指向当前执行的opcode，初始时指向zend_op_array起始位置
+    zend_execute_data   *call;             /* current call                   */
+    zval                *return_value;  //返回值指针 */
+    zend_function       *func;          //当前执行的函数（非函数调用时为空）
+    zval                 This;          //this + call_info + num_args
+    zend_class_entry    *called_scope;  //当前call的类
+    zend_execute_data   *prev_execute_data; //函数调用时指向调用位置作用空间
+    zend_array          *symbol_table; //全局变量符号表
+#if ZEND_EX_USE_RUN_TIME_CACHE
+    void               **run_time_cache;   /* cache op_array->run_time_cache */
+#endif
+#if ZEND_EX_USE_LITERALS
+    zval                *literals;  //字面量数组，与func.op_array->literals相同
+#endif
+};
+```
+
+## 2、opcode执行方式
 PHP代码编译为opcode数组：zend_op_array，然后逐条执行，在执行的方式上zend提供了三种不同的方式：CALL、SWITCH、GOTO，默认方式为CALL，下面具体解释下这个是什么意思。
 
 每个opcode都代表了一些特定的处理操作，这个东西怎么提供呢？一种是把每种opcode负责的工作封装成一个function，然后执行器循环执行即可，这就是`CALL`模式的工作方式；另外一种是把所有opcode的处理方式通过C语言里面的label标签区分开，然后执行器执行的时候goto到相应的位置处理，这就是`GOTO`模式的工作方式；最后还有一种方式是把所有的处理方式写到一个switch下，然后通过case不同的opcode执行具体的操作，这就是`SWITCH`模式的工作方式。
@@ -144,47 +188,9 @@ void execute(int []op_array)
 
 后面分析的过程使用的都是默认模式`CALL`。
 
-## 4、zend_executor_globals(EG)
-`zend_executor_globals executor_globals`是PHP整个生命周期中最主要的一个结构，是一个全局变量，在main执行前分配(非ZTS下)，直到PHP退出，经常见到的一个宏`EG`操作的就是这个结构。
-```c
-//zend_compile.c
-#ifndef ZTS
-ZEND_API zend_compiler_globals compiler_globals;
-ZEND_API zend_executor_globals executor_globals;
-#endif
-
-//zend_globals_macros.h
-# define EG(v) (executor_globals.v)
-```
-`zend_executor_globals`结构非常大，定义在`zend_globals.h`中，比较重要的几个字段含义如下图所示：
-
-![EG](img/EG.png)
-
-## 5、执行流程
+## 3、执行流程
 Zend的executor与linux二进制程序执行的过程是非常类似的，在C程序执行时有两个寄存器ebp、esp分别指向当前作用栈的栈顶、栈底，局部变量全部分配在当前栈，函数调用、返回通过`call`、`ret`指令完成，调用时`call`将当前执行位置压入栈中，返回时`ret`将之前执行位置出栈，跳回旧的位置继续执行，在Zend VM中`zend_execute_data`就扮演了这两个角色，`zend_execute_data.prev_execute_data`保存的是调用方的信息，实现了`call/ret`，`zend_execute_data`后面会分配额外的内存空间用于局部变量的存储，实现了`ebp/esp`的作用。
 
-先看下`zend_execute_data`结构：
-```c
-#define EX(element)             ((execute_data)->element)
-
-//zend_compile.h
-struct _zend_execute_data {
-    const zend_op       *opline;  //指向当前执行的opcode，初始时指向zend_op_array起始位置
-    zend_execute_data   *call;             /* current call                   */
-    zval                *return_value;  //返回值指针 */
-    zend_function       *func;          //当前执行的函数（非函数调用时为空）
-    zval                 This;          //this + call_info + num_args
-    zend_class_entry    *called_scope;  //当前call的类
-    zend_execute_data   *prev_execute_data; //函数调用时指向调用位置作用空间
-    zend_array          *symbol_table; //全局变量符号表
-#if ZEND_EX_USE_RUN_TIME_CACHE
-    void               **run_time_cache;   /* cache op_array->run_time_cache */
-#endif
-#if ZEND_EX_USE_LITERALS
-    zval                *literals;  //字面量数组，与func.op_array->literals相同
-#endif
-};
-```
 注意：在执行前分配内存时并不仅仅是分配了`zend_execute_data`大小的空间，除了`sizeof(zend_execute_data)`外还会额外申请一块空间，用于分配局部变量、临时(中间)变量等，具体的分配过程下面会讲到。
 
 Zend执行opcode的过程简单的描述为以下步骤：
