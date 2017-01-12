@@ -235,6 +235,18 @@ ZEND_API void zend_execute(zend_op_array *op_array, zval *return_value)
 上面的过程分为四步：
 
 #### (1)分配stack
+由`zend_vm_stack_push_call_frame`函数分配一块用于当前作用域的内存空间，返回结果是`zend_execute_data`的起始位置。
+```c
+//zend_execute.h
+static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame(uint32_t call_info, zend_function *func, uint32_t num_args, ...)
+{
+    uint32_t used_stack = zend_vm_calc_used_stack(num_args, func);
+
+    return zend_vm_stack_push_call_frame_ex(used_stack, call_info,
+        func, num_args, called_scope, object);
+}
+```
+首先根据
 
 #### (2)初始化execute_data
 
