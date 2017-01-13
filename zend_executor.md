@@ -300,8 +300,45 @@ static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(ui
 ```
 
 #### (2)初始化execute_data
+这一步的操作主要是设置几个指针:`opline`、`call`、`return_value`，同时将PHP的全局变量添加到`EG(symbol_table)`中去：
+```c
+//zend_execute.c
+static zend_always_inline void i_init_execute_data(zend_execute_data *execute_data, zend_op_array *op_array, zval *return_value)
+{
+    EX(opline) = op_array->opcodes;
+    EX(call) = NULL;
+    EX(return_value) = return_value;
+
+    if (UNEXPECTED(EX(symbol_table) != NULL)) {
+        ...
+        zend_attach_symbol_table(execute_data);//将全局变量添加到EG(symbol_table)中一份
+    }else{ //这个分支的情况还未深入分析，后面碰到再补充
+        ...
+    }
+}
+```
 
 #### (3)执行opcode
+这一步开始具体执行opcode指令，这里调用的是`zend_execute_ex`，这是一个函数指针，如果此指针没有被任何扩展重新定义那么将由默认的`execute_ex`处理：
+```c
+# define ZEND_OPCODE_HANDLER_ARGS_PASSTHRU execute_data
+
+ZEND_API void execute_ex(zend_execute_data *ex)
+{
+    zend_execute_data *execute_data = ex;
+
+    while(1) {
+        int ret;
+        if (UNEXPECTED((ret = ((opcode_handler_t)EX(opline)->handler)(execute_data /*ZEND_OPCODE_HANDLER_ARGS_PASSTHRU*/)) != 0)) {
+            if (EXPECTED(ret > 0)) { //调到新的位置执行：函数调用时的情况
+                execute_data = EG(current_execute_data);
+            }else{
+                return;
+            }
+        }
+    }
+}
+```
 
 #### (4)释放stack
 
