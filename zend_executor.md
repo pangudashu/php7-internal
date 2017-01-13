@@ -341,6 +341,56 @@ ZEND_API void execute_ex(zend_execute_data *ex)
 ```
 大概的执行过程上面已经介绍过了，这里只分析下整体执行流程，至于PHP各语法具体的handler处理后面会单独列一章详细分析。
 
+这里还有一个问题是：handler是如何根据opcode索引到的？opcode的数值各不相同，同时可以根据两个zend_op的类型设置不同的处理handler，因此每个opcode指令最多有20个对应的处理handler，所有的handler按照opcode数值的顺序定义在一个大数组中:`zend_opcode_handlers`，每25个为同一个opcode，如果对应的op_type类型handler则可以设置为空：
+```c
+void zend_init_opcodes_handlers(void)
+{
+    static const void *labels[] = {
+        ZEND_NOP_SPEC_HANDLER,
+        ZEND_NOP_SPEC_HANDLER,
+        ...
+    }；
+    zend_opcode_handlers = labels;
+}
+```
+索引的算法：
+```c
+static const void *zend_vm_get_opcode_handler(zend_uchar opcode, const zend_op* op)
+{
+        static const int zend_vm_decode[] = {
+            _UNUSED_CODE, /* 0              */
+            _CONST_CODE,  /* 1 = IS_CONST   */
+            _TMP_CODE,    /* 2 = IS_TMP_VAR */
+            _UNUSED_CODE, /* 3              */
+            _VAR_CODE,    /* 4 = IS_VAR     */
+            _UNUSED_CODE, /* 5              */
+            _UNUSED_CODE, /* 6              */
+            _UNUSED_CODE, /* 7              */
+            _UNUSED_CODE, /* 8 = IS_UNUSED  */
+            _UNUSED_CODE, /* 9              */
+            _UNUSED_CODE, /* 10             */
+            _UNUSED_CODE, /* 11             */
+            _UNUSED_CODE, /* 12             */
+            _UNUSED_CODE, /* 13             */
+            _UNUSED_CODE, /* 14             */
+            _UNUSED_CODE, /* 15             */
+            _CV_CODE      /* 16 = IS_CV     */
+        };
+        return zend_opcode_handlers[opcode * 25 + zend_vm_decode[op->op1_type] * 5 + zend_vm_decode[op->op2_type]];
+}
+
+ZEND_API void zend_vm_set_opcode_handler(zend_op* op)
+{
+    op->handler = zend_vm_get_opcode_handler(zend_user_opcodes[op->opcode], op);
+}
+
+#define _CONST_CODE  0
+#define _TMP_CODE    1
+#define _VAR_CODE    2
+#define _UNUSED_CODE 3
+#define _CV_CODE     4
+```
+
 #### (4)释放stack
 这一步就比较简单了，只是将申请的`zend_execute_data`内存释放给内存池，具体的操作只需要修改几个指针即可：
 
