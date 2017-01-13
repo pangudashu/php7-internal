@@ -339,8 +339,37 @@ ZEND_API void execute_ex(zend_execute_data *ex)
     }
 }
 ```
+大概的执行过程上面已经介绍过了，这里只分析下整体执行流程，至于PHP各语法具体的handler处理后面会单独列一章详细分析。
 
 #### (4)释放stack
+这一步就比较简单了，只是将申请的`zend_execute_data`内存释放给内存池，具体的操作只需要修改几个指针即可：
 
+```c
+static zend_always_inline void zend_vm_stack_free_call_frame_ex(uint32_t call_info, zend_execute_data *call)
+{
+    ZEND_ASSERT_VM_STACK_GLOBAL;
+
+    if (UNEXPECTED(call_info & ZEND_CALL_ALLOCATED)) {
+        zend_vm_stack p = EG(vm_stack);
+
+        zend_vm_stack prev = p->prev;
+
+        EG(vm_stack_top) = prev->top;
+        EG(vm_stack_end) = prev->end;
+        EG(vm_stack) = prev;
+        efree(p);
+
+    } else {
+        EG(vm_stack_top) = (zval*)call;
+    }
+
+    ZEND_ASSERT_VM_STACK_GLOBAL;
+}
+
+static zend_always_inline void zend_vm_stack_free_call_frame(zend_execute_data *call)
+{
+    zend_vm_stack_free_call_frame_ex(ZEND_CALL_INFO(call), call);
+}
+```
 
 
