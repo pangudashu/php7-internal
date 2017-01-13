@@ -88,8 +88,8 @@ truct _zend_op_array {
     uint32_t last;
     zend_op *opcodes; //opcode指令
 
-    int last_var;
-    uint32_t T; //临时变量数
+    int last_var;//PHP代码里定义的变量数：op_type为IS_CV的变量
+    uint32_t T; //临时变量数:op_type为IS_TMP_VAR、IS_VAR的变量
     zend_string **vars; //PHP变量名列表
 
     int last_brk_cont;
@@ -150,9 +150,9 @@ opcode各字段含义下面展开说明。
 ```
 * IS_CONST    常量（字面量），编译时就可确定且不会改变的值，比如:$a = "hello~"，其中字符串"hello~"就是常量
 * IS_TMP_VAR  临时变量，比如：$a = "hello~" . time()，其中`"hello~" . time()`的值类型就是IS_TMP_VAR，再比如:$a = "123" + $b，`"123" + $b`的结果类型也是IS_TMP_VAR，从这两个例子可以猜测，临时变量多是执行期间其它类型组合现生成的一个中间值，由于它是现生成的，所以把IS_TMP_VAR赋值给IS_CV变量时不会增加其引用计数
-* IS_VAR      PHP内部的变量，这个很容易认为是PHP脚本里的变量，其实不是，这个类型最常见的例子是PHP函数的返回值，比如:$a = time()，其中`time()`的结果就是IS_VAR，这条语句实际会有两个zval，一个是`time()`返回值，类型是IS_VAR，另一个是`$a`，类型是IS_CV，整个赋值过程是：调用time()，将返回值存下，类型为IS_CV，然后将此值复制给$a，IS_CV = IS_TMP_VAR
+* IS_VAR      PHP变量，这个很容易认为是PHP脚本里的变量，其实不是，这里PHP变量的含义这样理解：PHP变量是没有变量名的，不是直接在代码通过`$var_name`定义的，IS_CV则有变量名。这个类型最常见的例子是PHP函数的返回值，再如`$a[0]`数组这种，它取出的值也是`IS_VAR`，再比如`$$a`这种
 * IS_UNUSED   表示操作数没有用
-* IS_CV       PHP变量，即脚本里定义的变量，这些变量是编译阶段确定的，所以是compile variable
+* IS_CV       PHP变量，即脚本里通过`$var_name`定义的变量，这些变量是编译阶段确定的，所以是compile variable，
 
 `result_type`除了上面几种类型外还有一种类型`EXT_TYPE_UNUSED (1<<5)`，返回值没有使用时会用到，这个跟`IS_UNUSED`的区别是：`IS_UNUSED`表示本操作返回值没有意义(也可简单的认为没有返回值)，而`EXT_TYPE_UNUSED`的含义是有返回值，但是没有用到，比如函数返回值没有接收。
 
