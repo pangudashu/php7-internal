@@ -246,7 +246,29 @@ static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame(uint3
         func, num_args, called_scope, object);
 }
 ```
-首先根据
+首先根据`zend_execute_data`、当前`zend_op_array`中局部/临时变量数计算需要的内存空间：
+```c
+static zend_always_inline uint32_t zend_vm_calc_used_stack(uint32_t num_args, zend_function *func)
+{
+    uint32_t used_stack = ZEND_CALL_FRAME_SLOT + num_args; //内部函数只用这么多，临时变量是编译过程中根据PHP的代码优化出的值，比如:`"hi~".time()`，而在内部函数中则没有这种情况
+
+    if (EXPECTED(ZEND_USER_CODE(func->type))) { //在php脚本中写的function
+        used_stack += func->op_array.last_var + func->op_array.T - MIN(func->op_array.num_args, num_args);
+    }
+    return used_stack * sizeof(zval);
+}
+```
+回想下前面编译阶段zend_op_array的结果，在编译过程中已经确定当前作用域下有多少个局部变量(func->op_array.last_var)、临时/中间/无用变量(func->op_array.T)，从而在执行之初就将他们全部分配完成：
+
+* __last_var__：PHP代码中定义的变量数，zend_op.op{1|2}_type = IS_CV 或 result_type & IS_CV的全部数量
+* __T__：表示用到的临时变量、无用变量等，zend_op.op{1|2}_type = IS_TMP_VAR|IS_VAR 或resulte_type & (IS_TMP_VAR|IS_VAR)的全部数量
+
+比如赋值操作：`$a = 1234;`，编译后`last_var = 1，T = 1`，`last_var`有`$a`，这里为什么会有`T`？因为赋值语句有一个结果返回值，只是这个值没有用到，假如这么用结果就会用到了`if(($a = 1234) == true){...}`，这时候`$a = 1234;`的返回结果类型是`IS_VAR`，记在`T`上。
+
+`num_args`为函数调用时的实际传入参数数量，`func->op_array.num_args`为全部参数数量，所以`MIN(func->op_array.num_args, num_args)`等于`num_args`，在自定义函数中`used_stack=ZEND_CALL_FRAME_SLOT + func->op_array.last_var + func->op_array.T`，而在调用内部函数时则只需要分配实际传入参数的空间即可，内部函数不会有临时变量的概念。
+
+最终分配的内存空间如下图：
+![var_T](img/var_T.png)
 
 #### (2)初始化execute_data
 
