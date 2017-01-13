@@ -248,6 +248,7 @@ static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame(uint3
 ```
 首先根据`zend_execute_data`、当前`zend_op_array`中局部/临时变量数计算需要的内存空间：
 ```c
+//zend_execute.h
 static zend_always_inline uint32_t zend_vm_calc_used_stack(uint32_t num_args, zend_function *func)
 {
     uint32_t used_stack = ZEND_CALL_FRAME_SLOT + num_args; //内部函数只用这么多，临时变量是编译过程中根据PHP的代码优化出的值，比如:`"hi~".time()`，而在内部函数中则没有这种情况
@@ -257,6 +258,10 @@ static zend_always_inline uint32_t zend_vm_calc_used_stack(uint32_t num_args, ze
     }
     return used_stack * sizeof(zval);
 }
+
+//zend_compile.h
+#define ZEND_CALL_FRAME_SLOT \
+    ((int)((ZEND_MM_ALIGNED_SIZE(sizeof(zend_execute_data)) + ZEND_MM_ALIGNED_SIZE(sizeof(zval)) - 1) / ZEND_MM_ALIGNED_SIZE(sizeof(zval))))
 ```
 回想下前面编译阶段zend_op_array的结果，在编译过程中已经确定当前作用域下有多少个局部变量(func->op_array.last_var)、临时/中间/无用变量(func->op_array.T)，从而在执行之初就将他们全部分配完成：
 
@@ -268,7 +273,31 @@ static zend_always_inline uint32_t zend_vm_calc_used_stack(uint32_t num_args, ze
 `num_args`为函数调用时的实际传入参数数量，`func->op_array.num_args`为全部参数数量，所以`MIN(func->op_array.num_args, num_args)`等于`num_args`，在自定义函数中`used_stack=ZEND_CALL_FRAME_SLOT + func->op_array.last_var + func->op_array.T`，而在调用内部函数时则只需要分配实际传入参数的空间即可，内部函数不会有临时变量的概念。
 
 最终分配的内存空间如下图：
+
 ![var_T](img/var_T.png)
+
+这里实际分配内存时并不是直接`malloc`的，还记得上面EG结构中有个`vm_stack`吗？实际内存是从这里获取的，每次从`EG(vm_stack_top)`处开始分配，分配完再将此指针指向`EG(vm_stack_top) + used_stack`，这里不再对vm_stack作更多分析，更下层实际就是Zend的内存池(zend_alloc.c)，后面也会单独分析。
+
+```c
+static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(uint32_t used_stack, ...)
+{
+    zend_execute_data *call = (zend_execute_data*)EG(vm_stack_top);
+    ...
+    
+    //当前vm_stack是否够用
+    if (UNEXPECTED(used_stack > (size_t)(((char*)EG(vm_stack_end)) - (char*)call))) {
+        call = (zend_execute_data*)zend_vm_stack_extend(used_stack); //新开辟一块vm_stack
+        ...
+    }else{ //空间够用，直接分配
+        EG(vm_stack_top) = (zval*)((char*)call + used_stack);
+        ...
+    }
+
+    call->func = func;
+    ...
+    return call;
+}
+```
 
 #### (2)初始化execute_data
 
