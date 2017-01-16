@@ -341,7 +341,7 @@ ZEND_API void execute_ex(zend_execute_data *ex)
 ```
 大概的执行过程上面已经介绍过了，这里只分析下整体执行流程，至于PHP各语法具体的handler处理后面会单独列一章详细分析。
 
-这里还有一个问题是：handler是如何根据opcode索引到的？opcode的数值各不相同，同时可以根据两个zend_op的类型设置不同的处理handler，因此每个opcode指令最多有20个对应的处理handler，所有的handler按照opcode数值的顺序定义在一个大数组中:`zend_opcode_handlers`，每25个为同一个opcode，如果对应的op_type类型handler则可以设置为空：
+这里还有一个问题是：handler是如何根据opcode索引到的？opcode的数值各不相同，同时可以根据两个zend_op的类型设置不同的处理handler，因此每个opcode指令最多有20个（25去掉重复的5个）对应的处理handler，所有的handler按照opcode数值的顺序定义在一个大数组中:`zend_opcode_handlers`，每25个为同一个opcode，如果对应的op_type类型handler则可以设置为空：
 ```c
 void zend_init_opcodes_handlers(void)
 {
@@ -357,6 +357,7 @@ void zend_init_opcodes_handlers(void)
 ```c
 static const void *zend_vm_get_opcode_handler(zend_uchar opcode, const zend_op* op)
 {
+        //因为op_type为2的倍数，所以这里做了下转化，转成了0-4
         static const int zend_vm_decode[] = {
             _UNUSED_CODE, /* 0              */
             _CONST_CODE,  /* 1 = IS_CONST   */
@@ -376,11 +377,13 @@ static const void *zend_vm_get_opcode_handler(zend_uchar opcode, const zend_op* 
             _UNUSED_CODE, /* 15             */
             _CV_CODE      /* 16 = IS_CV     */
         };
+        //根据op1_type、op2_type、opcode得到对应的handler
         return zend_opcode_handlers[opcode * 25 + zend_vm_decode[op->op1_type] * 5 + zend_vm_decode[op->op2_type]];
 }
 
 ZEND_API void zend_vm_set_opcode_handler(zend_op* op)
 {
+    //设置zend_op的handler，这个操作是在编译期间完成的
     op->handler = zend_vm_get_opcode_handler(zend_user_opcodes[op->opcode], op);
 }
 
