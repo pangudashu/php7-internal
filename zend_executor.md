@@ -1,4 +1,7 @@
 # Zend引擎执行过程
+Zend引擎主要包含两个核心部分：编译、执行：
+
+![zend_vm](img/zend_vm.png)
 
 前面分析了Zend的编译过程以及PHP用户函数的实现，接下来分析下Zend引擎的执行过程。
 
