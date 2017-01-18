@@ -191,6 +191,37 @@ $c = &$b;/*或$c = &$a*/     //$a,$b,$c -> zend_reference_1(refcount=3) -> zend_
 这种方式是可行的，而且内存管理也很简单，但是，硬拷贝带来的一个问题是效率低，比如我们定义了一个变量然后赋值给另外一个变量，可能后面都只是只读操作，假如硬拷贝的话就会有多余的一份数据，这个问题的解决方案是：__引用计数+写时复制__。PHP变量的管理正是基于这两点实现的。
 
 ### 3.1 引用计数
+引用计数是指在value中增加一个字段`refcount`记录指向当前value的数量，变量复制、函数传参时并不直接硬拷贝一份value数据，而是将`refcount++`，变量销毁时将`refcount--`，等到`refcount`减为0时表示已经没有变量引用这个value，将它销毁即可。
+```php
+$a = "time:" . time();   //$a       ->  zend_string_1(refcount=1)
+$b = $a;                 //$a,$b    ->  zend_string_1(refcount=2)
+$c = $b;                 //$a,$b,$c ->  zend_string_1(refcount=3)
+
+unset($b);               //$b = IS_UNDEF  $a,$c ->  zend_string_1(refcount=2)
+```
+引用计数的信息位于给具体value结构的gc中：
+```c
+typedef struct _zend_refcounted_h {
+    uint32_t         refcount;          /* reference counter 32-bit */
+    union {
+        struct {
+            ZEND_ENDIAN_LOHI_3(
+                zend_uchar    type,
+                zend_uchar    flags,    /* used for strings & objects */
+                uint16_t      gc_info)  /* keeps GC root number (or 0) and color */
+        } v;
+        uint32_t type_info;
+    } u;
+} zend_refcounted_h;
+```
+从上面的zend_value结构可以看出并不是所有的数据类型都会用到引用计数，`long`、`double`直接都是硬拷贝，只有value是指针的那几种类型才__可能__会用到引用计数。
+
+下面再看一个例子：
+```php
+$a = "hi~";
+$b = $a;
+```
+猜测一下变量`$a/$b`的引用情况。
 
 ### 3.2 写时复制
 
