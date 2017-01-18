@@ -161,14 +161,27 @@ struct _zend_reference {
 ```
 结构非常简单，除了公共部分`zend_refcounted_h`外只有一个`val`，举个示例看下具体的结构关系：
 ```php
-<?php
 $a = "time:" . time();      //$a    -> zend_string_1(refcount=1)
 $b = &$a;                   //$a,$b -> zend_reference_1(refcount=2) -> zend_string_1(refcount=1)
-?>
 ```
 最终的结果如图：
 
 ![ref](img/zend_ref.png)
+
+注意：引用只能通过`&`产生，无法通过赋值传递，比如：
+```php
+$a = "time:" . time();      //$a    -> zend_string_1(refcount=1)
+$b = &$a;                   //$a,$b -> zend_reference_1(refcount=2) -> zend_string_1(refcount=1)
+$c = $b;                    //$a,$b -> zend_reference_1(refcount=2) -> zend_string_1(refcount=2)
+                            //$c    ->                                 ---
+```
+`$b = &$a`这时候`$a`、`$b`的类型是引用，但是`$c = $b`并不会直接将`$b`赋值给`$c`，而是把`$b`实际指向的zval赋值给`$c`，如果想要`$c`也是一个引用则需要这么操作：
+```php
+$a = "time:" . time();      //$a       -> zend_string_1(refcount=1)
+$b = &$a;                   //$a,$b    -> zend_reference_1(refcount=2) -> zend_string_1(refcount=1)
+$c = &$b;/*或$c = &$a*/     //$a,$b,$c -> zend_reference_1(refcount=3) -> zend_string_1(refcount=1) 
+```
+这个也表示PHP中的引用只可能有一层，不会出现一个引用指向另外一个引用的情况，也就是没有C语言中`指针的指针`的概念。
 
 ## 3.内存管理
 
