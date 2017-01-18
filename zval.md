@@ -2,8 +2,8 @@
 
 PHP变量实现的核心结构是`zval`，各种类型的实现均基于此结构实现，是PHP中最基础的一个结构，下面就看下这个结构以及PHP变量的内存管理机制。
 
-## zval结构
-```
+## 1.zval结构
+```c
 //zend_type.h
 typedef struct _zval_struct     zval;
 
@@ -56,10 +56,43 @@ struct _zval_struct {
 
 从`zend_value`可以看出，除`long`、`double`类型直接存储值外，其它类型都为指针，指向各自的结构。
 
-## 类型
+## 2.类型
+`zval.u1.type`类型有：
+```c
+/* regular data types */
+#define IS_UNDEF                    0
+#define IS_NULL                     1
+#define IS_FALSE                    2
+#define IS_TRUE                     3
+#define IS_LONG                     4
+#define IS_DOUBLE                   5
+#define IS_STRING                   6
+#define IS_ARRAY                    7
+#define IS_OBJECT                   8
+#define IS_RESOURCE                 9
+#define IS_REFERENCE                10
 
-## 内存管理(引用计数)
+/* constant expressions */
+#define IS_CONSTANT                 11
+#define IS_CONSTANT_AST             12
 
-## 引用类型
+/* fake types */
+#define _IS_BOOL                    13
+#define IS_CALLABLE                 14
+
+/* internal types */
+#define IS_INDIRECT                 15
+#define IS_PTR                      17
+```
+
+
+## 3.内存管理
+
+### 3.1 引用计数
+
+### 3.2 写时复制
+
+### 3.3 垃圾回收
+
 
 
