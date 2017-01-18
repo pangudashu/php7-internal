@@ -86,8 +86,22 @@ struct _zval_struct {
 ```
 
 ### 2.1 基本类型
+最简单的类型是true、false、long、double、null，其中true、false、null没有value，直接根据type区分，而long、double的值则直接存在value中：zend_long、double。
 
 ### 2.2 字符串
+PHP中字符串通过`zend_string`表示:
+```c
+struct _zend_string {
+    zend_refcounted_h gc;
+    zend_ulong        h;                /* hash value */
+    size_t            len;
+    char              val[1];
+};
+```
+* gc：变量引用信息，比如当前value的引用数，所有用到引用计数的变量类型都会有这个结构，3.1节会详细分析
+* h：哈希值，数组中计算索引时会用到
+* len：字符串长度，通过这个值保证二进制安全
+* val：字符串内容，变长struct，分配时按len长度申请内存
 
 ### 2.3 数组
 
