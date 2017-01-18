@@ -167,6 +167,7 @@ $b = &$a;                   //$a,$b -> zend_reference_1(refcount=2) -> zend_stri
 ?>
 ```
 最终的结果如图：
+
 ![ref](img/zend_ref.png)
 
 ## 3.内存管理
