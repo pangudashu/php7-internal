@@ -57,7 +57,7 @@ struct _zval_struct {
 从`zend_value`可以看出，除`long`、`double`类型直接存储值外，其它类型都为指针，指向各自的结构。
 
 ## 2.类型
-`zval.u1.type`类型有：
+`zval.u1.type`类型：
 ```c
 /* regular data types */
 #define IS_UNDEF                    0
@@ -85,6 +85,15 @@ struct _zval_struct {
 #define IS_PTR                      17
 ```
 
+### 2.1 基本类型
+
+### 2.2 字符串
+
+### 2.3 数组
+
+### 2.4 对象/资源
+
+### 2.5 引用
 
 ## 3.内存管理
 
@@ -95,4 +104,5 @@ struct _zval_struct {
 ### 3.3 垃圾回收
 
 
+[参考：https://nikic.github.io/2015/05/05/Internal-value-representation-in-PHP-7-part-1.html]
 
