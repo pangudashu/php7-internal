@@ -110,7 +110,7 @@ array是PHP中非常强大的一个数据结构，它的底层实现就是普通
 typedef struct _zend_array HashTable;
 
 struct _zend_array {
-    zend_refcounted_h gc;
+    zend_refcounted_h gc; //引用计数信息，与字符串相同
     union {
         struct {
             ZEND_ENDIAN_LOHI_4(
@@ -132,8 +132,42 @@ struct _zend_array {
 };
 ```
 ### 2.4 对象/资源
+```c
+struct _zend_object {
+    zend_refcounted_h gc;
+    uint32_t          handle;
+    zend_class_entry *ce; //对象对应的class类
+    const zend_object_handlers *handlers;
+    HashTable        *properties; //对象属性哈希表
+    zval              properties_table[1];
+};
+
+struct _zend_resource {
+    zend_refcounted_h gc;
+    int               handle;
+    int               type;
+    void             *ptr;
+};
+```
+对象比较常见，资源指的是tcp连接、文件句柄等等类型，这种类型比较灵活，可以随意定义struct，通过ptr指向，后面会单独分析这种类型，这里不再多说。
 
 ### 2.5 引用
+引用是PHP中比较特殊的一种类型，它实际是指向另外一个PHP变量，对它的修改会直接改动实际指向的zval，可以简单的理解为C中的指针，在PHP中通过`&`操作符产生一个引用变量。
+```c
+struct _zend_reference {
+    zend_refcounted_h gc;
+    zval              val;
+};
+```
+结构非常简单，除了公共部分`zend_refcounted_h`外只有一个`val`，举个示例看下具体的结构关系：
+```php
+<?php
+$a = "time:" . time();      //$a    -> zend_string_1(refcount=1)
+$b = &$a;                   //$a,$b -> zend_reference_1(refcount=2) -> zend_string_1(refcount=1)
+?>
+```
+最终的结果如图：
+![ref](img/zend_ref.png)
 
 ## 3.内存管理
 
