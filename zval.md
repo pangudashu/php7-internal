@@ -290,10 +290,44 @@ __copyable__的意思是当value发生duplication时是否需要copy，这个具
 具体literal、局部变量区变量的初始化、赋值后面编译、执行两篇会具体分析，这里知道变量有个`copyable`的属性就行了。
 
 ### 3.3 垃圾回收
+PHP变量的回收是根据refcount实现的，当unset、return时会将变量的引用计数减掉，如果refcount减到0则直接释放value，这是变量的简单gc过程，但是实际过程中出现gc无法回收导致内存泄漏的bug，先看下一个例子：
 
+```php
+$a = [1];
+$a[] = &$a;
+
+unset($a);
+```
+`unset($a)`之前引用关系：
+
+![gc_1](img/gc_1.png)
+
+`unset($a)`之后：
+
+![gc_2](img/gc_2.png)
+
+可以看到，`unset($a)`之后由于数组中有子元素指向`$a`，所以`refcount > 0`，无法通过简单的gc机制回收，这种变量就是垃圾，垃圾回收器要处理的就是这种情况，目前垃圾只会出现在array、object两种类型中，所以只会针对这两种情况作特殊处理：当销毁一个变量时，如果发现减掉refcount后仍然大于0，且类型是IS_ARRAY、IS_OBJECT则将此value放入gc可能垃圾双向链表中，等这个链表达到一定数量后启动检查程序将所有变量检查一遍，如果确定是垃圾则销毁释放。
+
+标识变量是否需要回收也是通过`u1.type_flag`区分的：
+```c
+#define IS_TYPE_COLLECTABLE
+```
+```c
+|     type       | collectable |
++----------------+-------------+
+|simple types    |             |
+|string          |             |
+|interned string |             |
+|array           |      Y      |
+|immutable array |             |
+|object          |      Y      |
+|resource        |             |
+|reference       |             |
+```
+具体的垃圾回收过程这里不再介绍，后面会单独分析。
 
 ## 4.参考资料
 
 [https://nikic.github.io/2015/05/05/Internal-value-representation-in-PHP-7-part-1.html]
 [https://nikic.github.io/2015/06/19/Internal-value-representation-in-PHP-7-part-2.html]
-
+[http://blog.csdn.net/phpkernel/article/details/5734743]
