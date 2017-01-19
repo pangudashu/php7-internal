@@ -271,7 +271,19 @@ $b[] = 3;
 ```c
 #define IS_TYPE_COLLECTABLE         (1<<3)
 ```
-__可复制__的意思是当value发生duplication时是否需要copy，这个具体有两种情形下会发生：
+```c
+|     type       |  copyable  |
++----------------+------------+
+|simple types    |            |
+|string          |      Y     |
+|interned string |            |
+|array           |      Y     |
+|immutable array |            |
+|object          |            |
+|resource        |            |
+|reference       |            |
+```
+__copyable__的意思是当value发生duplication时是否需要copy，这个具体有两种情形下会发生：
 * a.从__literal变量区__复制到__局部变量区__，比如：`$a = [];`实际会有两个数组，而`$a = "hi~";//interned string`则只有一个string
 * b.局部变量区分离时(写时复制)：如改变变量内容时引用计数>1，`$a = [];$b = $a; $b[] = 1;`这里会分离，类型是array所以可以复制
 
