@@ -328,6 +328,6 @@ unset($a);
 
 ## 4.参考资料
 
-[https://nikic.github.io/2015/05/05/Internal-value-representation-in-PHP-7-part-1.html]
-[https://nikic.github.io/2015/06/19/Internal-value-representation-in-PHP-7-part-2.html]
-[http://blog.csdn.net/phpkernel/article/details/5734743]
+[《Internal value representation in PHP 7 - Part 1》](https://nikic.github.io/2015/05/05/Internal-value-representation-in-PHP-7-part-1.html)
+[《Internal value representation in PHP 7 - Part 2》](https://nikic.github.io/2015/06/19/Internal-value-representation-in-PHP-7-part-2.html)
+[《PHP新的垃圾回收机制:Zend GC详解》](http://blog.csdn.net/phpkernel/article/details/5734743)
