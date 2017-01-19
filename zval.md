@@ -247,7 +247,10 @@ $a,$b -> zend_string_1(refcount=0,val="hi~")
 |resource        |      Y     |
 |reference       |      Y     |
 ```
+simple types很显然用不到，不再解释，string、array、object、resource、reference有引用计数机制也很容易理解，下面具体解释下另外两个特殊的类型：
+* interned string：内部字符串，这是种什么类型？我们在PHP中写的所有字符都可以认为是这种类型，比如function name、class name、variable name、静态字符串等等，我们这样定义:`$a = "hi~;"`后面的字符串内容是唯一不变的，这些字符串等同于C语言中定义在静态变量区的字符串：`char *a = "hi~";`，这些字符串的生命周期为request期间，request完成后会统一销毁释放，自然也就无需在运行期间通过引用计数管理内存。
 
+* immutable array：只有在用opcache的时候才会用到这种类型，暂不分析。
 
 ### 3.2 写时复制
 
