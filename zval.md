@@ -223,6 +223,32 @@ $b = $a;
 ```
 猜测一下变量`$a/$b`的引用情况。
 
+这个不跟上面的例子一样吗？字符串`"hi~"`有`$a/$b`两个引用，所以`zend_string1(refcount=2)`。但是这是错的，gdb调试发现上面例子zend_string的引用计数为0。这是为什么呢？
+```c
+$a,$b -> zend_string_1(refcount=0,val="hi~")
+```
+
+事实上并不是所有的PHP变量都会用到引用计数，基本类型：true/false/double/long/null是硬拷贝自然不需要这种机制，但是除了这几个还有两个特殊的类型也不会用到：interned string(内部字符串)、immutable array，它们的type是`IS_STRING`、`IS_ARRAY`，与普通string、array类型相同，那怎么区分一个value是否支持引用计数呢？还记得`zval.u1`中那个类型掩码`type_flag`吗？正是通过这个字段标识的，这个字段除了标识value是否支持引用计数外还有其它几个标识位，按位分割。
+
+支持引用计数的value类型其`zval.u1.type_flag`为`IS_TYPE_REFCOUNTED`：
+```c
+#define IS_TYPE_REFCOUNTED          (1<<2)
+```
+下面具体列下哪些类型会有这个标识：
+```c
+|     type       | refcounted |
++----------------+------------+
+|simple types    |            |
+|string          |      Y     |
+|interned string |            |
+|array           |      Y     |
+|immutable array |            |
+|object          |      Y     |
+|resource        |      Y     |
+|reference       |      Y     |
+```
+
+
 ### 3.2 写时复制
 
 ### 3.3 垃圾回收
