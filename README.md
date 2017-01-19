@@ -6,7 +6,7 @@
    * 基本概念(base_introduction.md)
    * [PHP框架执行流程](base_process.md)
 * 变量
-   * 基本类型(zval.md)
+   * [变量的内部实现](zval.md)
    * [数组](zend_ht.md)
    * 常量(var_common.md)
 * [PHP代码的编译](zend_compile.md)
