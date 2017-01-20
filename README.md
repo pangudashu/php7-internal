@@ -13,6 +13,7 @@
 * 函数
    * [用户函数的实现](yong_hu_han_shu_de_shi_xian.md)
 * [Zend引擎执行流程](zend_executor.md)
+* 面向对象
 * PHP语法实现(php_language.md)
 * 垃圾回收(gc.md)
 * 扩展开发
