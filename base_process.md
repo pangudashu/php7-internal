@@ -39,9 +39,9 @@ struct _zend_module_entry {
 };
 ```
 `zend_module_entry`是一个扩展唯一的标识，从这个结构我们可以猜测一个PHP扩展主要都由哪些部分构成：
-* __扩展名称：__name，这个是必须的，每个扩展需要有个名字
-* __两个阶段的四个hook钩子函数：__module_startup_func、module_shutdown_func、request_startup_func、request_shutdown_func，这些函数分别通过：PHP_MINIT_FUNCTION、PHP_MSHUTDOWN_FUNCTION、PHP_RINIT_FUNCTION、PHP_RSHUTDOWN_FUNCTION几个宏定义，这几个函数不是必须的，可以设为null
-* __函数数组：__functions，这个是指扩展中定义的PHP内部函数，是个数组，内部函数通过宏`PHP_FUNCTION`定义，这个也不是必须的可以设为null
+* __扩展名称__：name，这个是必须的，每个扩展需要有个名字
+* __两个阶段的四个hook钩子函数__：module_startup_func、module_shutdown_func、request_startup_func、request_shutdown_func，这些函数分别通过：PHP_MINIT_FUNCTION、PHP_MSHUTDOWN_FUNCTION、PHP_RINIT_FUNCTION、PHP_RSHUTDOWN_FUNCTION几个宏定义，这几个函数不是必须的，可以设为null
+* __函数数组__：functions，这个是指扩展中定义的PHP内部函数，是个数组，内部函数通过宏`PHP_FUNCTION`定义，这个也不是必须的可以设为null
 
 总的来看一个扩展主要就包括上面三个部分，其中`zend_module_entry`是最重要的一个结构，我们需要定义一个这样的全局变量：
 ```c
