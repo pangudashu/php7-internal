@@ -122,76 +122,7 @@ struct _zend_execute_data {
 };
 ```
 
-## 2、opcode执行方式
-PHP代码编译为opcode数组：zend_op_array，然后逐条执行，在执行的方式上zend提供了三种不同的方式：CALL、SWITCH、GOTO，默认方式为CALL，这个是什么意思呢？
-
-每个opcode都代表了一些特定的处理操作，这个东西怎么提供呢？一种是把每种opcode负责的工作封装成一个function，然后执行器循环执行即可，这就是`CALL`模式的工作方式；另外一种是把所有opcode的处理方式通过C语言里面的label标签区分开，然后执行器执行的时候goto到相应的位置处理，这就是`GOTO`模式的工作方式；最后还有一种方式是把所有的处理方式写到一个switch下，然后通过case不同的opcode执行具体的操作，这就是`SWITCH`模式的工作方式。
-
-假设opcode数组是这个样子：
-```c
-int op_array[] = {
-    opcode_1,
-    opcode_2,
-    opcode_3,
-    ...
-};
-```
-各模式下的工作过程类似这样：
-```c
-//CALL模式
-void opcode_1_handler() {...}
-
-void opcode_2_handler() {...}
-...
-
-void execute(int []op_array)
-{
-    void *opcode_handler_list[] = {&opcode_1_handler, &opcode_2_handler, ...};
-
-    while(1){
-        void handler = opcode_handler_list[op_array[i]];
-        handler(); //call handler
-        i++;
-    }
-}
-
-//GOTO模式
-void execute(int []op_array)
-{
-    while(1){
-        goto opcode_xx_handler_label;
-    }
-
-opcode_1_handler_label:
-    ...
-
-opcode_2_handler_label:
-    ...
-...
-}
-
-//SWITCH模式
-void execute(int []op_array)
-{
-    while(1){
-        switch(op_array[i]){
-            case opcode_1:
-                ...
-            case opcode_2:
-                ...
-            ...
-        }
-
-        i++;
-    }
-}
-
-```
-三种模式效率是不同的，GOTO最快，怎么选择其它模式呢？下载PHP源码后不要直接编译，Zend目录下有个文件：`zend_vm_gen.php`，在编译PHP前执行：`php zend_vm_gen.php --with-vm-kind=CALL|SWITCH|GOTO`，这个脚本将重新生成:`zend_vm_opcodes.h`、`zend_vm_opcodes.c`、`zend_vm_execute.h`三个文件覆盖原来的，然后再编译PHP即可。
-
-后面分析的过程使用的都是默认模式`CALL`。
-
-## 3、执行流程
+## 2、执行流程
 Zend的executor与linux二进制程序执行的过程是非常类似的，在C程序执行时有两个寄存器ebp、esp分别指向当前作用栈的栈顶、栈底，局部变量全部分配在当前栈，函数调用、返回通过`call`、`ret`指令完成，调用时`call`将当前执行位置压入栈中，返回时`ret`将之前执行位置出栈，跳回旧的位置继续执行，在Zend VM中`zend_execute_data`就扮演了这两个角色，`zend_execute_data.prev_execute_data`保存的是调用方的信息，实现了`call/ret`，`zend_execute_data`后面会分配额外的内存空间用于局部变量的存储，实现了`ebp/esp`的作用。
 
 注意：在执行前分配内存时并不仅仅是分配了`zend_execute_data`大小的空间，除了`sizeof(zend_execute_data)`外还会额外申请一块空间，用于分配局部变量、临时(中间)变量等，具体的分配过程下面会讲到。

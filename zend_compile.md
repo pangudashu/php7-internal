@@ -131,6 +131,129 @@ struct _zend_op {
 
 opcode各字段含义下面展开说明。
 
+### handler
+handler为每条opcode对应的C语言编写的__处理过程__，所有opcode对应的处理过程定义在`zend_vm_def.h`中，值得注意的是这个文件并不是编译时用到的，因为opcode的__处理过程__有三种不同的提供形式：CALL、SWITCH、GOTO，默认方式为CALL，这个是什么意思呢？
+
+每个opcode都代表了一些特定的处理操作，这个东西怎么提供呢？一种是把每种opcode负责的工作封装成一个function，然后执行器循环执行即可，这就是CALL模式的工作方式；另外一种是把所有opcode的处理方式通过C语言里面的label标签区分开，然后执行器执行的时候goto到相应的位置处理，这就是GOTO模式的工作方式；最后还有一种方式是把所有的处理方式写到一个switch下，然后通过case不同的opcode执行具体的操作，这就是SWITCH模式的工作方式。
+
+假设opcode数组是这个样子：
+```c
+int op_array[] = {
+    opcode_1,
+    opcode_2,
+    opcode_3,
+    ...
+};
+```
+各模式下的工作过程类似这样：
+```c
+//CALL模式
+void opcode_1_handler() {...}
+
+void opcode_2_handler() {...}
+...
+
+void execute(int []op_array)
+{
+    void *opcode_handler_list[] = {&opcode_1_handler, &opcode_2_handler, ...};
+
+    while(1){
+        void handler = opcode_handler_list[op_array[i]];
+        handler(); //call handler
+        i++;
+    }
+}
+
+//GOTO模式
+void execute(int []op_array)
+{
+    while(1){
+        goto opcode_xx_handler_label;
+    }
+
+opcode_1_handler_label:
+    ...
+
+opcode_2_handler_label:
+    ...
+...
+}
+
+//SWITCH模式
+void execute(int []op_array)
+{
+    while(1){
+        switch(op_array[i]){
+            case opcode_1:
+                ...
+            case opcode_2:
+                ...
+            ...
+        }
+
+        i++;
+    }
+}
+```
+三种模式效率是不同的，GOTO最快，怎么选择其它模式呢？下载PHP源码后不要直接编译，Zend目录下有个文件：`zend_vm_gen.php`，在编译PHP前执行：`php zend_vm_gen.php --with-vm-kind=CALL|SWITCH|GOTO`，这个脚本将重新生成:`zend_vm_opcodes.h`、`zend_vm_opcodes.c`、`zend_vm_execute.h`三个文件覆盖原来的，然后再编译PHP即可。
+
+后面分析的过程使用的都是默认模式`CALL`，也就是opcode对应的handler为一个函数指针，编译时opcode对应的handler是如何根据opcode索引到的呢？
+
+opcode的数值各不相同，同时可以根据两个zend_op的类型设置不同的处理handler，因此每个opcode指令最多有20个（25去掉重复的5个）对应的处理handler，所有的handler按照opcode数值的顺序定义在一个大数组中:`zend_opcode_handlers`，每25个为同一个opcode，如果对应的op_type类型handler则可以设置为空：
+```c
+//zend_vm_execute.h
+void zend_init_opcodes_handlers(void)
+{
+    static const void *labels[] = {
+        ZEND_NOP_SPEC_HANDLER,
+        ZEND_NOP_SPEC_HANDLER,
+        ...
+    }；
+    zend_opcode_handlers = labels;
+}
+```
+索引的算法：
+```c
+//zend_vm_execute.h
+static const void *zend_vm_get_opcode_handler(zend_uchar opcode, const zend_op* op)
+{
+        //因为op_type为2的倍数，所以这里做了下转化，转成了0-4
+        static const int zend_vm_decode[] = {
+            _UNUSED_CODE, /* 0              */
+            _CONST_CODE,  /* 1 = IS_CONST   */
+            _TMP_CODE,    /* 2 = IS_TMP_VAR */
+            _UNUSED_CODE, /* 3              */
+            _VAR_CODE,    /* 4 = IS_VAR     */
+            _UNUSED_CODE, /* 5              */
+            _UNUSED_CODE, /* 6              */
+            _UNUSED_CODE, /* 7              */
+            _UNUSED_CODE, /* 8 = IS_UNUSED  */
+            _UNUSED_CODE, /* 9              */
+            _UNUSED_CODE, /* 10             */
+            _UNUSED_CODE, /* 11             */
+            _UNUSED_CODE, /* 12             */
+            _UNUSED_CODE, /* 13             */
+            _UNUSED_CODE, /* 14             */
+            _UNUSED_CODE, /* 15             */
+            _CV_CODE      /* 16 = IS_CV     */
+        };
+        //根据op1_type、op2_type、opcode得到对应的handler
+        return zend_opcode_handlers[opcode * 25 + zend_vm_decode[op->op1_type] * 5 + zend_vm_decode[op->op2_type]];
+}
+
+ZEND_API void zend_vm_set_opcode_handler(zend_op* op)
+{
+    //设置zend_op的handler，这个操作是在编译期间完成的
+    op->handler = zend_vm_get_opcode_handler(zend_user_opcodes[op->opcode], op);
+}
+
+#define _CONST_CODE  0
+#define _TMP_CODE    1
+#define _VAR_CODE    2
+#define _UNUSED_CODE 3
+#define _CV_CODE     4
+```
+
 ### 操作数
 
 每条opcode都有两个操作数(不一定都有用)、一个返回值，其中handler是具体执行的方法，handler通过opcode、op1_type、op2_type三个值索引到，每条opcode都最多有(5*5)个不同的处理handler，后面分析zend执行的时候再具体讲这块。
@@ -195,7 +318,6 @@ main:
 
 关于C程序的执行过程、内存分配可以看:[https://github.com/pangudashu/anywork/tree/master/func_execute](https://github.com/pangudashu/anywork/tree/master/func_execute)
 
-
 虽然PHP代码不会直接编译为机器码，但编译、执行的设计跟C程序是一致的，也有常量区、变量也通过偏移量访问、也有虚拟的执行栈。
 
 ![php vs c](img/php_vs_c.png)
@@ -208,56 +330,4 @@ $b = "hello";
 ```
 `56`通过`(zval*)(_zend_op_array->literals + 0)`取到，`hello`通过`(zval*)(_zend_op_array->literals + 16)`取到,具体变量的读写操作将在执行阶段详细分析，这里只分析编译阶段的操作。
 
-这里还有一个问题是：opcode对应的handler是如何根据opcode索引到的？opcode的数值各不相同，同时可以根据两个zend_op的类型设置不同的处理handler，因此每个opcode指令最多有20个（25去掉重复的5个）对应的处理handler，所有的handler按照opcode数值的顺序定义在一个大数组中:`zend_opcode_handlers`，每25个为同一个opcode，如果对应的op_type类型handler则可以设置为空：
-```c
-void zend_init_opcodes_handlers(void)
-{
-    static const void *labels[] = {
-        ZEND_NOP_SPEC_HANDLER,
-        ZEND_NOP_SPEC_HANDLER,
-        ...
-    }；
-    zend_opcode_handlers = labels;
-}
-```
-索引的算法：
-```c
-static const void *zend_vm_get_opcode_handler(zend_uchar opcode, const zend_op* op)
-{
-        //因为op_type为2的倍数，所以这里做了下转化，转成了0-4
-        static const int zend_vm_decode[] = {
-            _UNUSED_CODE, /* 0              */
-            _CONST_CODE,  /* 1 = IS_CONST   */
-            _TMP_CODE,    /* 2 = IS_TMP_VAR */
-            _UNUSED_CODE, /* 3              */
-            _VAR_CODE,    /* 4 = IS_VAR     */
-            _UNUSED_CODE, /* 5              */
-            _UNUSED_CODE, /* 6              */
-            _UNUSED_CODE, /* 7              */
-            _UNUSED_CODE, /* 8 = IS_UNUSED  */
-            _UNUSED_CODE, /* 9              */
-            _UNUSED_CODE, /* 10             */
-            _UNUSED_CODE, /* 11             */
-            _UNUSED_CODE, /* 12             */
-            _UNUSED_CODE, /* 13             */
-            _UNUSED_CODE, /* 14             */
-            _UNUSED_CODE, /* 15             */
-            _CV_CODE      /* 16 = IS_CV     */
-        };
-        //根据op1_type、op2_type、opcode得到对应的handler
-        return zend_opcode_handlers[opcode * 25 + zend_vm_decode[op->op1_type] * 5 + zend_vm_decode[op->op2_type]];
-}
-
-ZEND_API void zend_vm_set_opcode_handler(zend_op* op)
-{
-    //设置zend_op的handler，这个操作是在编译期间完成的
-    op->handler = zend_vm_get_opcode_handler(zend_user_opcodes[op->opcode], op);
-}
-
-#define _CONST_CODE  0
-#define _TMP_CODE    1
-#define _VAR_CODE    2
-#define _UNUSED_CODE 3
-#define _CV_CODE     4
-```
 
