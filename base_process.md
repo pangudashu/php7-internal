@@ -49,7 +49,7 @@ zend_module_entry {mudule_name}_module_entry = {
     ...
 }
 ```
-而且这个变量的名称的规则必须是：__{mudule_name}_module_entry__。
+而且这个变量的名称格式必须是：__{mudule_name}_module_entry__。
 
 扩展可以在编译PHP时一起编译，也可以后期编译然后动态加载，下面看下动态扩展的加载过程：
 
@@ -105,3 +105,4 @@ PHPAPI int php_load_extension(char *filename, int type, int start_now)
     ZEND_DLEXPORT zend_module_entry *get_module(void) { return &name##_module_entry; //这个就是我们定义的扩展结构的全局变量 }\
     END_EXTERN_C()
 ```
+
