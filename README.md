@@ -11,9 +11,9 @@
    * [2.3 常量](var_common.md)
 * 第3章 Zend虚拟机
    * [3.1 PHP代码的编译](zend_compile.md)
-   * [3.2 函数实现]()
-      * [3.2.1 内部函数](internal_function.md)
-      * [3.2.2 用户函数的实现](user_function.md)
+   * [3.2 函数实现](function_implement.md)
+      * [3.2.1 内部函数](function_implement.md)
+      * [3.2.2 用户函数的实现](function_implement.md)
    * [3.3 Zend引擎执行流程](zend_executor.md)
    * 3.4 面向对象实现
 * [第4章 PHP语法实现](php_language.md)
