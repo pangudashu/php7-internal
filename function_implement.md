@@ -1,6 +1,6 @@
 # 函数实现
 
-## 用户自定义函数的实现
+## 1 用户自定义函数的实现
 
 函数，通俗的讲就是将一堆操作打包成一个黑盒，给予特定的输入将对应特定的输出。
 
@@ -48,12 +48,12 @@ union _zend_function {
 
 PHP在编译阶段将用户自定义的函数编译为独立的opcodes，保存在`EG(function_table)`中，调用时重新分配新的zend_execute_data(相当于运行栈)，然后执行函数的opcodes，调用完再还原到旧的`zend_execute_data`，继续执行，关于zend引擎execute阶段后面会详细分析。
 
-## 内部函数
+## 2 内部函数
 内部函数指的是由内核、扩展提供的C语言编写的function，这类函数不需要经历opcode的编译过程，所以效率上要高于PHP用户自定义的函数。
 
 Zend引擎中定义了很多内部函数供用户在PHP中使用，比如：define、defined、strlen、method_exists、class_exists、function_exists......等等，除了Zend引擎中定义的内部函数，PHP扩展中也提供了大量内部函数。
 
-### 内部函数结构
+### 2.1 内部函数结构
 上一节介绍`zend_function`为union，其中`internal_function`就是内部函数用到的，具体结构：
 ```
 //zend_complie.h
@@ -79,7 +79,7 @@ typedef struct _zend_internal_function {
 
 下面看下如何定义一个内部函数。
 
-### 定义与注册
+### 2.2 定义与注册
 内部函数与用户自定义函数冲突，用户无法在PHP代码中覆盖内部函数，执行PHP脚本时会提示error错误。
 
 内部函数的定义非常简单，我们只需要创建一个普通的C函数，然后创建一个`zend_internal_function`结构添加到__EG(function_table)__(也可能是CG(function_table),取决于在哪一阶段注册)中即可使用，内部函数__通常__情况下是在php_module_startup阶段注册的，这里之所以说通常是按照标准的扩展定义，除了扩展提供的方式我们可以在任何阶段自由定义内部函数，当然并不建议这样做。下面我们先不讨论扩展标准的定义方式，我们先自己尝试下如何注册一个内部函数。
@@ -122,4 +122,33 @@ call internal function 'qp_test'
 ```
 这样一个内部函数就定义完成了。这里有一个地方需要注意的我们把这个函数注册到__CG(function_table)__中去了，而不是__EG(function_table)__，这是因为在`php_request_startup`阶段会把__CG(function_table)__赋值给__EG(function_table)__。
 
+上面的过程看着比较简单，但是在实际应用中不要这样做，PHP提供给我们一套标准的定义方式，接下来看下如何在扩展中按照官方方式提供一个内部函数。
 
+首先也是定义C函数，这个通过`PHP_FUNCTION`宏定义：
+```c
+PHP_FUNCTION(qp_test)
+{
+    printf("call internal function 'qp_test'\n");
+}
+```
+然后是注册过程，这个只需要我们将所有的函数数组添加到扩展结构`zend_module_entry.functions`即可，扩展加载过程中会自动进行函数注册(见1.2节)，不需要我们干预：
+```c
+const zend_function_entry xxxx_functions[] = {
+        PHP_FE(qp_test,   NULL)
+        PHP_FE_END
+};
+
+zend_module_entry xxxx_module_entry = {
+    STANDARD_MODULE_HEADER,
+    "扩展名称",
+    xxxx_functions,
+    PHP_MINIT(timeout),
+    PHP_MSHUTDOWN(timeout),
+    PHP_RINIT(timeout),     /* Replace with NULL if there's nothing to do at request start */
+    PHP_RSHUTDOWN(timeout), /* Replace with NULL if there's nothing to do at request end */
+    PHP_MINFO(timeout),
+    PHP_TIMEOUT_VERSION,
+    STANDARD_MODULE_PROPERTIES
+};
+```
+关于更多扩展中函数相关的用法会在后面扩展开发一章中详细介绍，这里不再展开。
