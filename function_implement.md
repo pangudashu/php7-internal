@@ -82,4 +82,44 @@ typedef struct _zend_internal_function {
 ### 定义与注册
 内部函数与用户自定义函数冲突，用户无法在PHP代码中覆盖内部函数，执行PHP脚本时会提示error错误。
 
+内部函数的定义非常简单，我们只需要创建一个普通的C函数，然后创建一个`zend_internal_function`结构添加到__EG(function_table)__(也可能是CG(function_table),取决于在哪一阶段注册)中即可使用，内部函数__通常__情况下是在php_module_startup阶段注册的，这里之所以说通常是按照标准的扩展定义，除了扩展提供的方式我们可以在任何阶段自由定义内部函数，当然并不建议这样做。下面我们先不讨论扩展标准的定义方式，我们先自己尝试下如何注册一个内部函数。
+
+根据`zend_internal_function`的结构我们知道需要定义一个handler：
+```c
+void qp_test(INTERNAL_FUNCTION_PARAMETERS)
+{
+    printf("call internal function 'qp_test'\n");
+}
+```
+然后创建一个内部函数结构(我们在扩展PHP_MINIT_FUNCTION方法中注册，也可以在其他位置)：
+```c
+PHP_MINIT_FUNCTION(xxxxxx)
+{
+    zend_string *lowercase_name;
+    zend_function *reg_function;
+
+    //函数名转小写，因为php的函数不区分大小写
+    lowercase_name = zend_string_alloc(7, 1);
+    zend_str_tolower_copy(ZSTR_VAL(lowercase_name), "qp_test", 7);
+    lowercase_name = zend_new_interned_string(lowercase_name); 
+
+    reg_function = malloc(sizeof(zend_internal_function));
+    reg_function->internal_function.type = ZEND_INTERNAL_FUNCTION; //定义类型为内部函数
+    reg_function->internal_function.function_name = lowercase_name;
+    reg_function->internal_function.handler = qp_test;
+
+    zend_hash_add_ptr(CG(function_table), lowercase_name, reg_function); //注册到CG(function_table)符号表中
+}
+```
+接着编译、安装扩展，测试：
+```php
+<?php
+qp_test();
+?>
+
+结果输出：
+call internal function 'qp_test'
+```
+这样一个内部函数就定义完成了。这里有一个地方需要注意的我们把这个函数注册到__CG(function_table)__中去了，而不是__EG(function_table)__，这是因为在`php_request_startup`阶段会把__CG(function_table)__赋值给__EG(function_table)__。
+
 
