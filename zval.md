@@ -289,7 +289,10 @@ __copyable__的意思是当value发生duplication时是否需要copy，这个具
 
 具体literal、局部变量区变量的初始化、赋值后面编译、执行两篇文章会具体分析，这里知道变量有个`copyable`的属性就行了。
 
-### 3.3 垃圾回收
+### 3.3 变量回收
+PHP变量的回收主要有两种：主动销毁、自动销毁。主动销毁指的就是__unset__，而自动销毁就是PHP的自动管理机制，在return时减掉局部变量的refcount，即使没有显式的return，PHP也会自动给加上这个操作。
+
+### 3.4 垃圾回收
 PHP变量的回收是根据refcount实现的，当unset、return时会将变量的引用计数减掉，如果refcount减到0则直接释放value，这是变量的简单gc过程，但是实际过程中出现gc无法回收导致内存泄漏的bug，先看下一个例子：
 
 ```php
