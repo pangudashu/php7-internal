@@ -136,6 +136,41 @@ static zend_mm_heap *zend_mm_init(void)
 ![alloc_all](img/alloc_all.png)
 
 #### 5.1.3.1 Huge分配
+超过2M内存的申请，与通用的内存申请没有太大差别，只是将申请的内存块通过单链表进行了管理。
+
+```c
+static void *zend_mm_alloc_huge(zend_mm_heap *heap, size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+{
+    size_t new_size = ZEND_MM_ALIGNED_SIZE_EX(size, REAL_PAGE_SIZE); //按页大小重置实际要分配的内存
+
+#if ZEND_MM_LIMIT
+    //如果有内存使用限制则check是否已达上限，达到的话进行zend_mm_gc清理后再检查
+    //此过程不再展开分析
+#endif
+
+    //分配chunk
+    ptr = zend_mm_chunk_alloc(heap, new_size, ZEND_MM_CHUNK_SIZE);
+    if (UNEXPECTED(ptr == NULL)) {
+        //清理后再尝试分配一次
+        if (zend_mm_gc(heap) &&
+            (ptr = zend_mm_chunk_alloc(heap, new_size, ZEND_MM_CHUNK_SIZE)) != NULL) {
+            /* pass */
+        } else {
+            //申请失败
+            zend_mm_safe_error(heap, "Out of memory");
+            return NULL;
+        }
+    }
+    
+    //将申请的内存通过zend_mm_huge_list插入到链表中,heap->huge_list指向的实际是zend_mm_huge_list
+    zend_mm_add_huge_block(heap, ptr, new_size, ...);
+    ...
+
+    return ptr;
+}
+```
+huge的分配过程还是比较简单的。
+
 #### 5.1.3.2 Large分配
 #### 5.1.3.3 Small分配
 
