@@ -55,6 +55,9 @@ struct _zend_mm_free_slot {
     zend_mm_free_slot *next_free_slot;//此指针只有内存未分配时用到，分配后整个结构体转为char使用
 };
 ```
+chunk、page、slot三者的关系：
+
+![zend_heap](img/zend_heap.png)
 
 接下来看下内存池的初始化以及三种内存分配的过程。
 
