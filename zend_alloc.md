@@ -93,18 +93,18 @@ static zend_mm_heap *zend_mm_init(void)
     zend_mm_chunk *chunk = (zend_mm_chunk*)zend_mm_chunk_alloc_int(ZEND_MM_CHUNK_SIZE, ZEND_MM_CHUNK_SIZE);
     zend_mm_heap *heap;
 
-    heap = &chunk->heap_slot;
+    heap = &chunk->heap_slot; //heap结构实际是主chunk嵌入的一个结构，后面再分配chunk的heap_slot不再使用
     chunk->heap = heap;
     chunk->next = chunk;
     chunk->prev = chunk;
-    chunk->free_pages = ZEND_MM_PAGES - ZEND_MM_FIRST_PAGE;
+    chunk->free_pages = ZEND_MM_PAGES - ZEND_MM_FIRST_PAGE; //剩余可用page数
     chunk->free_tail = ZEND_MM_FIRST_PAGE;
     chunk->num = 0;
-    chunk->free_map[0] = (Z_L(1) << ZEND_MM_FIRST_PAGE) - 1;
-    chunk->map[0] = ZEND_MM_LRUN(ZEND_MM_FIRST_PAGE);
-    heap->main_chunk = chunk;
-    heap->cached_chunks = NULL;
-    heap->chunks_count = 1;
+    chunk->free_map[0] = (Z_L(1) << ZEND_MM_FIRST_PAGE) - 1; //将第一个page的bit分配标识位设置为1
+    chunk->map[0] = ZEND_MM_LRUN(ZEND_MM_FIRST_PAGE); //第一个page的类型为ZEND_MM_IS_LRUN，即large内存
+    heap->main_chunk = chunk; //指向主chunk
+    heap->cached_chunks = NULL; //缓存chunk链表
+    heap->chunks_count = 1; //已分配chunk数
     heap->peak_chunks_count = 1;
     heap->cached_chunks_count = 0;
     heap->avg_chunks_count = 1.0;
@@ -120,13 +120,7 @@ static zend_mm_heap *zend_mm_init(void)
     heap->limit = (Z_L(-1) >> Z_L(1));
     heap->overflow = 0;
 #endif
-#if ZEND_MM_CUSTOM
-    heap->use_custom_heap = ZEND_MM_CUSTOM_HEAP_NONE;
-#endif
-#if ZEND_MM_STORAGE
-    heap->storage = NULL;
-#endif
-    heap->huge_list = NULL;
+    heap->huge_list = NULL; //huge内存链表
     return heap;
 }
 ```
@@ -134,7 +128,12 @@ static zend_mm_heap *zend_mm_init(void)
 
 ![chunk_init](img/chunk_init.png)
 
+初始化的过程实际只是分配了一个主chunk，这里并没有看到开始提到的小内存slot切割，下一节我们来详细看下各种内存的分配过程。
+
 ### 5.1.3 内存分配
+文章开头已经简单提过Zend内存分配器按照申请内存的大小有三种不同的实现：
+
+![alloc_all](img/alloc_all.png)
 
 #### 5.1.3.1 Huge分配
 #### 5.1.3.2 Large分配
