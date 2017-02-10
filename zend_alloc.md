@@ -12,8 +12,8 @@ chunk由512个page组成，其中第一个page用于保存chunk结构，剩下�
 ```c
 struct _zend_mm_heap {
 #if ZEND_MM_STAT
-    size_t             size;                    /* current memory usage */
-    size_t             peak;                    /* peak memory usage */
+    size_t             size; //当前已用内存数
+    size_t             peak; //内存单次申请的峰值
 #endif
     zend_mm_free_slot *free_slot[ZEND_MM_BINS]; /* 小内存分配的可用位置链表，ZEND_MM_BINS等于30，即此数组表示的是各种大小内存对应的链表头部 */
 #if ZEND_MM_STAT || ZEND_MM_LIMIT
@@ -172,6 +172,61 @@ static void *zend_mm_alloc_huge(zend_mm_heap *heap, size_t size ZEND_FILE_LINE_D
 huge的分配过程还是比较简单的。
 
 #### 5.1.3.2 Large分配
+大于3/4的page_size(4KB)且小于等于511个page_size的内存申请，也就是一个chunk的大小够用(之所以是511个page而不是512个是因为第一个page始终被chunk结构占用)。
+
+```c
+static zend_always_inline void *zend_mm_alloc_large(zend_mm_heap *heap, size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+{
+    //根据size大小计算需要分配多少个page
+    int pages_count = (int)ZEND_MM_SIZE_TO_NUM(size, ZEND_MM_PAGE_SIZE);
+
+    //分配pages_count个page
+    void *ptr = zend_mm_alloc_pages(heap, pages_count, ...);
+    
+    ...
+
+    return ptr;
+}
+```
+进一步看下`zend_mm_alloc_pages`，这个过程比较复杂，简单描述的话就是从第一个chunk开始查找当前chunk下是否有pages_count个连续可用的page，有的话就停止查找，没有的话则接着查找下一个chunk，如果直到最后一个chunk也没找到则重新分配一个新的chunk并插入chunk链表，这个过程中最不好理解的一点在于如何查找pages_count个连续可用的page，这个主要根据__chunk->free_map__实现的，下面具体看下完整的过程：
+
+```c
+static void *zend_mm_alloc_pages(zend_mm_heap *heap, int pages_count ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+{
+    zend_mm_chunk *chunk = heap->main_chunk;
+    int page_num, len;
+
+    //从第一个chunk开始查找可用page
+    while (1) {
+        //当前chunk剩余page总数已不够
+        if (UNEXPECTED(chunk->free_pages < pages_count)) {
+            goto not_found;
+        }
+
+        //查找当前chunk是否有pages_count个连续可用的page
+        ...
+
+not_found:
+        if (chunk->next == heap->main_chunk) { //是否已到最后一个chunk
+get_chunk:
+            ...
+        }else{
+            chunk = chunk->next;
+        }
+    }
+
+found: //找到可用page，page编号为page_num至(page_num + pages_count)
+    /* mark run as allocated */
+    chunk->free_pages -= pages_count;
+    zend_mm_bitset_set_range(chunk->free_map, page_num, pages_count);
+    chunk->map[page_num] = ZEND_MM_LRUN(pages_count); //map为两个值的组合值，首先表示当前page属于哪种类型，其次表示包含的page页数
+    if (page_num == chunk->free_tail) {
+        chunk->free_tail = page_num + pages_count;
+    }
+    return ZEND_MM_PAGE_ADDR(chunk, page_num);
+}
+```
+
 #### 5.1.3.3 Small分配
 
 ### 5.1.4 内存释放
