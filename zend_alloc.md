@@ -2,13 +2,13 @@
 zend针对内存的操作封装了一层，实现了更高效率的内存利用，其实现主要参考了tcmalloc的设计。
 
 zend内存池有两种粒度的内存块：chunk、page，每个chunk的大小为2M，page大小为4KB，一个chunk被切割为512个page，申请内存时按照三种情况处理：
-* __Huge:__ 申请内存大于2M，直接调用系统分配
-* __Large:__ 申请内存大于3092B(3/4 page_size)，小于2044KB(511 page_size)，此时分配n个page大小的内存
-* __Small:__ 申请内存小于3092B(3/4 page_size)，内存池提前定义好了30种同等大小的内存(8,16,24,32，...3072)，他们分配在不同的page上(不同大小的内存可能会分配在多个连续的page)，申请内存时直接在对应page上查找可用位置
+* __Huge(chunk):__ 申请内存大于2M，直接调用系统分配，分配若干个chunk
+* __Large(page):__ 申请内存大于3092B(3/4 page_size)，小于2044KB(511 page_size)，分配若干个page
+* __Small(slot):__ 申请内存小于3092B(3/4 page_size)，内存池提前定义好了30种同等大小的内存(8,16,24,32，...3072)，他们分配在不同的page上(不同大小的内存可能会分配在多个连续的page)，申请内存时直接在对应page上查找可用位置
 
-chunk由512个page组成，其中第一个page用于保存chunk结构，剩下的511个page用于内存分配，page主要用于Large、Small两种内存的分配；heap是表示内存池的一个结构，它是最主要的一个结构，用于管理上面三种内存的分配。
+### 5.1.1 基本数据结构
+chunk由512个page组成，其中第一个page用于保存chunk结构，剩下的511个page用于内存分配，page主要用于Large、Small两种内存的分配；heap是表示内存池的一个结构，它是最主要的一个结构，用于管理上面三种内存的分配，Zend中只有一个heap结构。
 
-heap、chunk的结构：
 ```c
 struct _zend_mm_heap {
 #if ZEND_MM_STAT
@@ -38,26 +38,27 @@ struct _zend_mm_heap {
 }
 
 struct _zend_mm_chunk {
-    zend_mm_heap      *heap;
-    zend_mm_chunk     *next;
-    zend_mm_chunk     *prev;
-    int                free_pages;              /* number of free pages */
+    zend_mm_heap      *heap; //指向heap
+    zend_mm_chunk     *next; //指向下一个chunk
+    zend_mm_chunk     *prev; //指向上一个chunk
+    int                free_pages; //当前chunk的剩余page数
     int                free_tail;               /* number of free pages at the end of chunk */
     int                num;
     char               reserve[64 - (sizeof(void*) * 3 + sizeof(int) * 3)];
-    zend_mm_heap       heap_slot;               /* used only in main chunk */
-    zend_mm_page_map   free_map;                /* 512 bits or 64 bytes */
-    zend_mm_page_info  map[ZEND_MM_PAGES];      /* 2 KB = 512 * 4 */
+    zend_mm_heap       heap_slot; //heap结构，只有主chunk会用到
+    zend_mm_page_map   free_map; //标识各page是否已分配的数组，总大小512bit，对应page总数，每个page占一个bit位
+    zend_mm_page_info  map[ZEND_MM_PAGES]; //各page的信息：当前page使用类型(用于large分配还是small)、占用的page数等
 };
 
+//按固定大小切好的small内存槽
 struct _zend_mm_free_slot {
-    zend_mm_free_slot *next_free_slot;
+    zend_mm_free_slot *next_free_slot;//此指针只有内存未分配时用到，分配后整个结构体转为char使用
 };
 ```
 
 接下来看下内存池的初始化以及三种内存分配的过程。
 
-### 5.1.1 内存池初始化
+### 5.1.2 内存池初始化
 内存池在php_module_startup阶段初始化，start_memory_manager()：
 ```c
 ZEND_API void start_memory_manager(void)
@@ -130,12 +131,12 @@ static zend_mm_heap *zend_mm_init(void)
 
 ![chunk_init](img/chunk_init.png)
 
-### 5.1.2 内存分配
+### 5.1.3 内存分配
 
-#### 5.1.2.1 Huge分配
-#### 5.1.2.2 Large分配
-#### 5.1.2.3 Small分配
+#### 5.1.3.1 Huge分配
+#### 5.1.3.2 Large分配
+#### 5.1.3.3 Small分配
 
-### 5.1.3 内存释放
+### 5.1.4 内存释放
 
 
