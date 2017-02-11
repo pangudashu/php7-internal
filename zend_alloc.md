@@ -199,7 +199,10 @@ typedef zend_ulong zend_mm_bitset;    /* 4-byte or 8-byte integer */
 
 typedef zend_mm_bitset zend_mm_page_map[ZEND_MM_PAGE_MAP_LEN];     /* 64B */
 ```
-`heap->free_map`实际就是：zend_ulong free_map[16 or 8]。
+`heap->free_map`实际就是：__zend_ulong free_map[16 or 8]__，以__free_map[8]__为例，数组中的8个数字分别表示：0-63、64-127、128-191、192-255、256-319、320-383、384-447、448-511 page的分配与否，比如当前chunk的page 0、page 1、page 5已经分配，则:`free_map[0] = 35`:
+```
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00100011
+```
 
 ```c
 static void *zend_mm_alloc_pages(zend_mm_heap *heap, int pages_count ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
@@ -213,14 +216,16 @@ static void *zend_mm_alloc_pages(zend_mm_heap *heap, int pages_count ZEND_FILE_L
         if (UNEXPECTED(chunk->free_pages < pages_count)) {
             goto not_found;
         }else{ //查找当前chunk是否有pages_count个连续可用的page
-            int best = -1;
-            int best_len = ZEND_MM_PAGES;
+            int best = -1; //已找到可用page起始页
+            int best_len = ZEND_MM_PAGES; //已找到chunk的page间隙大小，这个值尽可能接近page_count
             int free_tail = chunk->free_tail;
             zend_mm_bitset *bitset = chunk->free_map;
-            zend_mm_bitset tmp = *(bitset++); // zend_mm_bitset tmp = *bitset;  bitset++ 
-            int i = 0;
+            zend_mm_bitset tmp = *(bitset++); // zend_mm_bitset tmp = *bitset;  bitset++ 这里是复制出的，不会影响free_map
+            int i = 0; 
 
-            ...
+            //下面就是查找最优page的过程,比较不容易理解
+            while (1) {
+            }
         }
 
 not_found:
