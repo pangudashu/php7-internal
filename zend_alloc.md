@@ -206,6 +206,7 @@ typedef zend_mm_bitset zend_mm_page_map[ZEND_MM_PAGE_MAP_LEN];     /* 64B */
 ```
 ![free_map](img/free_map.png)
 
+接下来看下`zend_mm_alloc_pages`的操作：
 ```c
 static void *zend_mm_alloc_pages(zend_mm_heap *heap, int pages_count ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
 {
@@ -249,9 +250,16 @@ found: //找到可用page，page编号为page_num至(page_num + pages_count)
     return ZEND_MM_PAGE_ADDR(chunk, page_num);
 }
 ```
-查找page的过程并不仅仅是够数即可，这里有一个标准是：__申请的一个或多个的page要尽可能的填满chunk的空隙__，具体的算法不太容易理解，下面先简单介绍下大概流程：
+查找过程就是从第一个chunk开始搜索，如果当前chunk没有合适的则进入下一chunk，如果直到最后都没有找到则新创建一个chunk。
 
-* step1:首先
+注意：查找page的过程并不仅仅是够数即可，这里有一个标准是：__申请的一个或多个的page要尽可能的填满chunk的空隙__，也就是说如果当前chunk有多块内存满足需求则会选择最合适的那块，而合适的标准前面提到的那个，具体的算法不太容易理解，下面先简单介绍下整体流程：
+
+* __step1:__首先从第一个page分组(page 0-63)开始检查，如果当前分组无可用page(即free_map[x] = -1)则进入下一分组，直到当前分组有空闲page，然后进入step2
+* __step2:__当前分组有可用page，首先找到第一个可用page的位置，记作page_num，接着__从page_num开始__向下找第一个已分配page的位置，记作end_page_num，这个地方需要注意，__如果当前分组剩下的page都是可用的则会进入下一分组接着搜索__，直到找到为止，这里还会借助chunk->free_tail避免无谓的查找到最后分组
+* __step3:__根据上一步找到的page_num、end_page_num可计算得到当前可用内存块大小为len个page，然后与申请的page页数(page_count)比较
+    * __step3.1:__如果len=page_count则表示找到的内存块符合申请条件且非常完美，直接从page_num开始分配page_count个page
+    * __step3.2:__如果len>page_count则表示找到的内存块符合条件且空间很充裕，暂且记录下len、page_num，然后继续向下搜索，如果有更合适的则用更合适的替代
+    * __step3.3:__如果len<page_count则表示当前内存块不够申请的大小，不符合条件，然后将这块空间的全部page设置为已分配(这样下一轮检索就不会再次找到它了)，接着从step1重新检索
 
 #### 5.1.3.3 Small分配
 
