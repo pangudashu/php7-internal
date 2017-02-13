@@ -199,11 +199,12 @@ typedef zend_ulong zend_mm_bitset;    /* 4-byte or 8-byte integer */
 
 typedef zend_mm_bitset zend_mm_page_map[ZEND_MM_PAGE_MAP_LEN];     /* 64B */
 ```
-`heap->free_map`实际就是：__zend_ulong free_map[16 or 8]__，以__free_map[8]__为例，数组中的8个数字分别表示：0-63、64-127、128-191、192-255、256-319、320-383、384-447、448-511 page的分配与否，比如当前chunk的page 0、page 1、page 5已经分配，则:`free_map[0] = 35`:
+`heap->free_map`实际就是：__zend_ulong free_map[16 or 8]__，以__free_map[8]__为例，数组中的8个数字分别表示：0-63、64-127、128-191、192-255、256-319、320-383、384-447、448-511 page的分配与否，比如当前chunk的page 0、page 2已经分配，则:`free_map[0] = 5`:
 ```
-//35:
-00000000 00000000 00000000 00000000 00000000 00000000 00000000 00100011
+//5:
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000101
 ```
+![free_map](img/free_map.png)
 
 ```c
 static void *zend_mm_alloc_pages(zend_mm_heap *heap, int pages_count ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
@@ -224,16 +225,8 @@ static void *zend_mm_alloc_pages(zend_mm_heap *heap, int pages_count ZEND_FILE_L
             zend_mm_bitset tmp = *(bitset++); // zend_mm_bitset tmp = *bitset;  bitset++ 这里是复制出的，不会影响free_map
             int i = 0; 
 
-            //下面就是查找最优page的过程,比较不容易理解
-            //大概过程是：
-            //1.首先跳过全部page都已分配的分组(即当前整数表示的32或64个page)，也就是等于-1的分组
-            //2.在有空闲page的分组中找到第一个可用page的位置：page_num
-            //3.跳过当前分组前n页连续已分配的page(这类free_map值特征是：(tmp & (tmp + 1)) == 0)
-            //4.接着找到第一个已经分配的page位置，判断这个page位置距离page_num的间隔：
-            //  4.1 如果恰好等于要申请的page数则终止查找，返回page_num位置
-            //  4.2 如果比要申请的page数大则赋值给best、best_len，然后继续向下查找，如果再发现符合的则跟best_len比较，best_len越小越合适
-            //  4.3 如果比要申请的page数小则表示不符合，这种情况下的处理是将当前分组中所有已分配page的上一页也置为已分配，然后重新判断一次，这样做实际是将空闲page间隙减小了
-            ...
+            //下面就是查找最优page的过程,稍后详细分析
+            //find best page
         }
 
 not_found:
@@ -256,7 +249,9 @@ found: //找到可用page，page编号为page_num至(page_num + pages_count)
     return ZEND_MM_PAGE_ADDR(chunk, page_num);
 }
 ```
-查找page的过程并不仅仅是够数即可，这里有一个标准是：__分配的page要尽可能的填满chunk的空隙__，这个过程在上面代码中简单注释了，具体的算法不太容易理解。
+查找page的过程并不仅仅是够数即可，这里有一个标准是：__申请的一个或多个的page要尽可能的填满chunk的空隙__，具体的算法不太容易理解，下面先简单介绍下大概流程：
+
+* step1:首先
 
 #### 5.1.3.3 Small分配
 
