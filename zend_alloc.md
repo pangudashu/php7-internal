@@ -17,26 +17,17 @@ struct _zend_mm_heap {
     size_t             size; //当前已用内存数
     size_t             peak; //内存单次申请的峰值
 #endif
-    zend_mm_free_slot *free_slot[ZEND_MM_BINS]; /* 小内存分配的可用位置链表，ZEND_MM_BINS等于30，即此数组表示的是各种大小内存对应的链表头部 */
-#if ZEND_MM_STAT || ZEND_MM_LIMIT
-    size_t             real_size;               /* current size of allocated pages */
-#endif
-#if ZEND_MM_STAT
-    size_t             real_peak;               /* peak size of allocated pages */
-#endif
-#if ZEND_MM_LIMIT
-    size_t             limit;                   /* memory limit */
-    int                overflow;                /* memory overflow flag */
-#endif
+    zend_mm_free_slot *free_slot[ZEND_MM_BINS]; // 小内存分配的可用位置链表，ZEND_MM_BINS等于30，即此数组表示的是各种大小内存对应的链表头部
+    ...
 
-    zend_mm_huge_list *huge_list;               /* list of huge allocated blocks */
+    zend_mm_huge_list *huge_list;               //大内存链表
 
-    zend_mm_chunk     *main_chunk;
-    zend_mm_chunk     *cached_chunks;           /* list of unused chunks */
-    int                chunks_count;            /* number of alocated chunks */
-    int                peak_chunks_count;       /* peak number of allocated chunks for current request */
-    int                cached_chunks_count;     /* number of cached chunks */
-    double             avg_chunks_count;
+    zend_mm_chunk     *main_chunk;              //指向chunk链表头部
+    zend_mm_chunk     *cached_chunks;           //缓存的chunk链表
+    int                chunks_count;            //已分配chunk数
+    int                peak_chunks_count;       //当前request使用chunk峰值
+    int                cached_chunks_count;     //缓存的chunk数
+    double             avg_chunks_count;        //chunk使用均值，每次请求结束后会根据peak_chunks_count重新计算：(avg_chunks_count+peak_chunks_count)/2.0
 }
 
 struct _zend_mm_chunk {
