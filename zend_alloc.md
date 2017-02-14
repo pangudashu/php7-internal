@@ -87,7 +87,7 @@ static void alloc_globals_ctor(zend_alloc_globals *alloc_globals)
     alloc_globals->mm_heap = zend_mm_init();
 }
 ```
-__alloc_globals__是一个全局变量，即__AG宏__，它只有一个成员:mm_heap，保存着整个内存池的信息，所有内存的分配都是基于这个值，看下它的初始化：
+__alloc_globals__是一个全局变量，即__AG宏__，它只有一个成员:mm_heap，保存着整个内存池的信息，所有内存的分配都是基于这个值，多线程模式下(ZTS)会有多个heap，也就是说每个线程都有一个独立的内存池，看下它的初始化：
 ```c
 static zend_mm_heap *zend_mm_init(void)
 {
@@ -348,5 +348,47 @@ HugePage的支持就是在这个地方提现的，详细的可以看下鸟哥的
 『关于Hugepage是啥，简单的说下就是默认的内存是以4KB分页的，而虚拟地址和内存地址是需要转换的， 而这个转换是要查表的，CPU为了加速这个查表过程都会内建TLB（Translation Lookaside Buffer）， 显而易见如果虚拟页越小，表里的条目数也就越多，而TLB大小是有限的，条目数越多TLB的Cache Miss也就会越高， 所以如果我们能启用大内存页就能间接降低这个TLB Cache Miss』
 
 ### 5.1.5 内存释放
+内存的释放主要是efree操作，与三种分配一一对应，过程也比较简单：
+```c
+#define efree(ptr)                          _efree((ptr) ZEND_FILE_LINE_CC ZEND_FILE_LINE_EMPTY_CC)
+#define efree_large(ptr)                    _efree_large((ptr) ZEND_FILE_LINE_CC ZEND_FILE_LINE_EMPTY_CC)
+#define efree_huge(ptr)                     _efree_huge((ptr) ZEND_FILE_LINE_CC ZEND_FILE_LINE_EMPTY_CC)
 
-zend_mm_free_heap
+ZEND_API void ZEND_FASTCALL _efree(void *ptr ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+{
+    zend_mm_free_heap(AG(mm_heap), ptr ZEND_FILE_LINE_RELAY_CC ZEND_FILE_LINE_ORIG_RELAY_CC);
+}
+
+static zend_always_inline void zend_mm_free_heap(zend_mm_heap *heap, void *ptr ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+{
+    size_t page_offset = ZEND_MM_ALIGNED_OFFSET(ptr, ZEND_MM_CHUNK_SIZE); //根据内存地址及对齐值判断内存地址偏移量是否为0，是的话只有huge情况符合，page、slot分配出的内存地址偏移量一定是>=ZEND_MM_CHUNK_SIZE的，因为第一页始终被chunk自身结构占用，不可能分配出去
+
+    if (UNEXPECTED(page_offset == 0)) {
+        if (ptr != NULL) {
+            //释放huge内存，从huge_list中删除
+            zend_mm_free_huge(heap, ptr ZEND_FILE_LINE_RELAY_CC ZEND_FILE_LINE_ORIG_RELAY_CC);
+        }
+    } else { //page或slot，根据chunk->map[]值判断当前page的分配类型
+        zend_mm_chunk *chunk = (zend_mm_chunk*)ZEND_MM_ALIGNED_BASE(ptr, ZEND_MM_CHUNK_SIZE);
+        int page_num = (int)(page_offset / ZEND_MM_PAGE_SIZE);
+        zend_mm_page_info info = chunk->map[page_num];
+
+        ZEND_MM_CHECK(chunk->heap == heap, "zend_mm_heap corrupted");
+        if (EXPECTED(info & ZEND_MM_IS_SRUN)) {
+            zend_mm_free_small(heap, ptr, ZEND_MM_SRUN_BIN_NUM(info)); //slot的释放上一节已经介绍过，就是个普通的链表插入操作
+        } else /* if (info & ZEND_MM_IS_LRUN) */ {
+            int pages_count = ZEND_MM_LRUN_PAGES(info);
+
+            ZEND_MM_CHECK(ZEND_MM_ALIGNED_OFFSET(page_offset, ZEND_MM_PAGE_SIZE) == 0, "zend_mm_heap corrupted");
+            //释放page，将free_map中的标识位设置为未分配
+            zend_mm_free_large(heap, chunk, page_num, pages_count);
+        }
+    }
+}
+```
+释放page的过程有一个地方值得注意，如果释放后发现当前chunk所有page都已经被释放则可能会释放所在chunk，还记得heap->cached_chunks吗？内存池会维持一定的chunk数，每次释放并不会直接销毁而是加入到cached_chunks中，这样下次申请chunk时直接就用了，同时为了防止占用过多内存，cached_chunks会根据每次request请求计算的chunk使用均值保证其维持在一定范围内。
+
+每次request请求结束会对内存池进行一次清理，检查cache的chunk数是否超过均值，超过的话就进行清理，具体的操作：`zend_mm_shutdown`，这里不再展开。
+
+
+
