@@ -313,6 +313,40 @@ small内存的分配过程：
 
 ![free_slot](img/free_slot.png)
 
-### 5.1.4 内存释放
+### 5.1.4 系统内存分配
+上面介绍了三种内存分配的过程，内存池实际只是在系统内存上面做了一些工作，尽可能减少系统内存的分配次数，接下来简单看下系统内存的分配。
 
+chunk、page、slot三种内存粒度中chunk的分配是直接向系统申请的，这里调用的并不是malloc（这只是glibc实现的内存操作，并不是操作系统的，zend的内存池实际跟malloc的角色相同），而是mmap：
+```c
+static void *zend_mm_mmap(size_t size)
+{
+    ...
 
+//hugepage支持
+#ifdef MAP_HUGETLB
+        if (zend_mm_use_huge_pages && size == ZEND_MM_CHUNK_SIZE) {
+            ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_HUGETLB, -1, 0);
+            if (ptr != MAP_FAILED) {
+                return ptr;
+            }
+        }
+#endif
+
+    ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+
+    if (ptr == MAP_FAILED) {
+#if ZEND_MM_ERROR
+        fprintf(stderr, "\nmmap() failed: [%d] %s\n", errno, strerror(errno));
+#endif  
+        return NULL;
+    }
+    return ptr;
+}
+```
+HugePage的支持就是在这个地方提现的，详细的可以看下鸟哥的这篇文章：[http://www.laruence.com/2015/10/02/3069.html](http://www.laruence.com/2015/10/02/3069.html)。
+
+『关于Hugepage是啥，简单的说下就是默认的内存是以4KB分页的，而虚拟地址和内存地址是需要转换的， 而这个转换是要查表的，CPU为了加速这个查表过程都会内建TLB（Translation Lookaside Buffer）， 显而易见如果虚拟页越小，表里的条目数也就越多，而TLB大小是有限的，条目数越多TLB的Cache Miss也就会越高， 所以如果我们能启用大内存页就能间接降低这个TLB Cache Miss』
+
+### 5.1.5 内存释放
+
+zend_mm_free_heap
