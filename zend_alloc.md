@@ -303,6 +303,12 @@ small内存总共有30种固定大小的规格：8,16,24,32,40,48,56,64,80,96,11
     _(28, 2560,    8, 5, x, y) \
     _(29, 3072,    4, 3, x, y)
 ```
+small内存的分配过程：
+
+* __step1:__首先根据申请内存的大小在heap->free_slot中找到对应的slot规格bin_num，如果当前slot为空则首先分配对应的page，然后将这些page内存按slot大小切割为zend_mm_free_slot单向链表，free_slot[bin_num]始终指向第一个可用的slot
+* __step2:__如果申请内存大小对应的的slot链表不为空则直接返回free_slot[bin_num]，然后将free_slot[bin_num]指向下一个空闲位置free_slot[bin_num]->next_free_slot
+* __step3:__释放内存时先将此内存的next_free_slot指向free_slot[bin_num]，然后将free_slot[bin_num]指向释放的内存，也就是将释放的内存插到链表头部
+
 ![free_slot](img/free_slot.png)
 
 ### 5.1.4 内存释放
