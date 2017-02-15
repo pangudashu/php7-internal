@@ -35,7 +35,7 @@ struct _zval_struct {
                 zend_uchar    type,         //变量类型
                 zend_uchar    type_flags,  //类型掩码，不同的类型会有不同的几种属性，内存管理会用到
                 zend_uchar    const_flags,
-                zend_uchar    reserved)     /* call info for EX(This) */
+                zend_uchar    reserved)     //call info，zend执行流程会用到
         } v;
         uint32_t type_info; //上面4个值的组合值，可以直接根据type_info取到4个对应位置的值
     } u1;

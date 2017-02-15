@@ -98,7 +98,7 @@ ZEND_API zend_executor_globals executor_globals;
 ![EG](img/EG.png)
 
 ### 1.4、zend_execute_data
-`zend_execute_data`是执行过程中最核心的一个结构，它代表了当前的作用域、代码的执行位置以及局部变量的分配等等，后面分析具体执行流程的时候会详细分析其作用。
+`zend_execute_data`是执行过程中最核心的一个结构，每次函数的调用、include/require、eval等都会生成一个新的结构，它表示当前的作用域、代码的执行位置以及局部变量的分配等等，等同于机器码执行过程中stack的角色，后面分析具体执行流程的时候会详细分析其作用。
 
 ```c
 #define EX(element)             ((execute_data)->element)
@@ -109,7 +109,7 @@ struct _zend_execute_data {
     zend_execute_data   *call;             /* current call                   */
     zval                *return_value;  //返回值指针 */
     zend_function       *func;          //当前执行的函数（非函数调用时为空）
-    zval                 This;          //this + call_info + num_args
+    zval                 This;          //这个值并仅仅是面向对象的this，还有另外两个值也通过这个记录：call_info + num_args，分别存在zval.u1.reserved、zval.u2.num_args
     zend_class_entry    *called_scope;  //当前call的类
     zend_execute_data   *prev_execute_data; //函数调用时指向调用位置作用空间
     zend_array          *symbol_table; //全局变量符号表
@@ -234,7 +234,7 @@ static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(ui
 ```
 
 #### (2)初始化execute_data
-这一步的操作主要是设置几个指针:`opline`、`call`、`return_value`，同时将PHP的全局变量添加到`EG(symbol_table)`中去：
+注意，这里的初始化是整个php脚本最初的那个，并不是指函数调用时的，这一步的操作主要是设置几个指针:`opline`、`call`、`return_value`，同时将PHP的全局变量添加到`EG(symbol_table)`中去：
 ```c
 //zend_execute.c
 static zend_always_inline void i_init_execute_data(zend_execute_data *execute_data, zend_op_array *op_array, zval *return_value)
@@ -245,7 +245,7 @@ static zend_always_inline void i_init_execute_data(zend_execute_data *execute_da
 
     if (UNEXPECTED(EX(symbol_table) != NULL)) {
         ...
-        zend_attach_symbol_table(execute_data);//将全局变量添加到EG(symbol_table)中一份
+        zend_attach_symbol_table(execute_data);//将全局变量添加到EG(symbol_table)中一份，因为此处的execute_data是PHP脚本最初的那个，不是function的，所以所有的变量都是全局的
     }else{ //这个分支的情况还未深入分析，后面碰到再补充
         ...
     }
