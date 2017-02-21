@@ -1,8 +1,8 @@
-# 变量的内部实现
+## 2.1 变量的内部实现
 
 PHP变量实现的基础结构是`zval`，各种类型的实现均基于此结构实现，是PHP中最基础的一个结构，每个PHP变量都对应一个`zval`，下面就看下这个结构以及PHP变量的内存管理机制。
 
-## 1.zval结构
+### 2.1.1 zval结构
 ```c
 //zend_type.h
 typedef struct _zval_struct     zval;
@@ -56,7 +56,7 @@ struct _zval_struct {
 
 从`zend_value`可以看出，除`long`、`double`类型直接存储值外，其它类型都为指针，指向各自的结构。
 
-## 2.类型
+### 2.1.2 类型
 `zval.u1.type`类型：
 ```c
 /* regular data types */
@@ -85,10 +85,10 @@ struct _zval_struct {
 #define IS_PTR                      17
 ```
 
-### 2.1 基本类型
+#### 2.1.2.1 基本类型
 最简单的类型是true、false、long、double、null，其中true、false、null没有value，直接根据type区分，而long、double的值则直接存在value中：zend_long、double。
 
-### 2.2 字符串
+#### 2.1.2.2 字符串
 PHP中字符串通过`zend_string`表示:
 ```c
 struct _zend_string {
@@ -103,7 +103,7 @@ struct _zend_string {
 * __len：__字符串长度，通过这个值保证二进制安全
 * __val：__字符串内容，变长struct，分配时按len长度申请内存
 
-### 2.3 数组
+#### 2.1.2.3 数组
 array是PHP中非常强大的一个数据结构，它的底层实现就是普通的有序HashTable，这里简单看下它的结构，下一节会单独分析数组的实现。
 
 ```c
@@ -131,7 +131,7 @@ struct _zend_array {
     dtor_func_t       pDestructor;
 };
 ```
-### 2.4 对象/资源
+#### 2.1.2.4 对象/资源
 ```c
 struct _zend_object {
     zend_refcounted_h gc;
@@ -151,8 +151,8 @@ struct _zend_resource {
 ```
 对象比较常见，资源指的是tcp连接、文件句柄等等类型，这种类型比较灵活，可以随意定义struct，通过ptr指向，后面会单独分析这种类型，这里不再多说。
 
-### 2.5 引用
-引用是PHP中比较特殊的一种类型，它实际是指向另外一个PHP变量，对它的修改会直接改动实际指向的zval，可以简单的理解为C中的指针，在PHP中通过`&`操作符产生一个引用变量。
+#### 2.1.2.5 引用
+引用是PHP中比较特殊的一种类型，它实际是指向另外一个PHP变量，对它的修改会直接改动实际指向的zval，可以简单的理解为C中的指针，在PHP中通过`&`操作符产生一个引用变量，也就是说不管以前的类型是什么，`&`首先会将新生成一个zval，类型为IS_REFERENCE，然后将val的value指向原来zval的value。
 ```c
 struct _zend_reference {
     zend_refcounted_h gc;
@@ -183,14 +183,14 @@ $c = &$b;/*或$c = &$a*/     //$a,$b,$c -> zend_reference_1(refcount=3) -> zend_
 ```
 这个也表示PHP中的__引用只可能有一层__，__不会出现一个引用指向另外一个引用的情况__，也就是没有C语言中`指针的指针`的概念。
 
-## 3.内存管理
+### 2.1.3 内存管理
 接下来分析下变量的分配、销毁。
 
 在分析变量内存管理之前我们先自己想一下可能的实现方案，最简单的处理方式：定义变量时alloc一个zval及对应的value结构(ref/arr/str/res...)，赋值、函数传参时硬拷贝一个副本，这样各变量最终的值完全都是独立的，不会出现多个变量同时共用一个value的情况，在执行完以后直接将各变量及value结构free掉。
 
 这种方式是可行的，而且内存管理也很简单，但是，硬拷贝带来的一个问题是效率低，比如我们定义了一个变量然后赋值给另外一个变量，可能后面都只是只读操作，假如硬拷贝的话就会有多余的一份数据，这个问题的解决方案是：__引用计数+写时复制__。PHP变量的管理正是基于这两点实现的。
 
-### 3.1 引用计数
+#### 2.1.3.1 引用计数
 引用计数是指在value中增加一个字段`refcount`记录指向当前value的数量，变量复制、函数传参时并不直接硬拷贝一份value数据，而是将`refcount++`，变量销毁时将`refcount--`，等到`refcount`减为0时表示已经没有变量引用这个value，将它销毁即可。
 ```php
 $a = "time:" . time();   //$a       ->  zend_string_1(refcount=1)
@@ -252,7 +252,7 @@ simple types很显然用不到，不再解释，string、array、object、resour
 
 * __immutable array：__只有在用opcache的时候才会用到这种类型，不清楚具体实现，暂时忽略。
 
-### 3.2 写时复制
+#### 2.1.3.2 写时复制
 上一小节介绍了引用计数，多个变量可能指向同一个value，然后通过refcount统计引用数，这时候如果其中一个变量试图更改value的内容则会重新拷贝一份value修改，同时断开旧的指向，写时复制的机制在计算机系统中有非常广的应用，它只有在必要的时候(写)才会发生硬拷贝，可以很好的提高效率，下面从示例看下：
 
 ```php
@@ -289,10 +289,10 @@ __copyable__的意思是当value发生duplication时是否需要copy，这个具
 
 具体literal、局部变量区变量的初始化、赋值后面编译、执行两篇文章会具体分析，这里知道变量有个`copyable`的属性就行了。
 
-### 3.3 变量回收
+#### 2.1.3.3 变量回收
 PHP变量的回收主要有两种：主动销毁、自动销毁。主动销毁指的就是__unset__，而自动销毁就是PHP的自动管理机制，在return时减掉局部变量的refcount，即使没有显式的return，PHP也会自动给加上这个操作。
 
-### 3.4 垃圾回收
+#### 2.1.3.4 垃圾回收
 PHP变量的回收是根据refcount实现的，当unset、return时会将变量的引用计数减掉，如果refcount减到0则直接释放value，这是变量的简单gc过程，但是实际过程中出现gc无法回收导致内存泄漏的bug，先看下一个例子：
 
 ```php
@@ -329,7 +329,7 @@ unset($a);
 ```
 具体的垃圾回收过程这里不再介绍，后面会单独分析。
 
-## 4.参考资料
+### 2.1.4 参考资料
 
 [《Internal value representation in PHP 7 - Part 1》](https://nikic.github.io/2015/05/05/Internal-value-representation-in-PHP-7-part-1.html)
 
