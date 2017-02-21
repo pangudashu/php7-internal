@@ -1,14 +1,14 @@
-# Zend引擎执行过程
+## 3.3 Zend引擎执行过程
 Zend引擎主要包含两个核心部分：编译、执行：
 
 ![zend_vm](img/zend_vm.png)
 
 前面分析了Zend的编译过程以及PHP用户函数的实现，接下来分析下Zend引擎的执行过程。
 
-## 1、数据结构
+### 3.3.1 数据结构
 执行流程中有几个重要的数据结构，先看下这几个结构。
 
-### 1.1、opcode
+#### 3.3.1.1 opcode
 opcode是将PHP代码编译产生的Zend虚拟机可识别的指令，php7共有173个opcode，定义在`zend_vm_opcodes.h`中，PHP中的所有语法实现都是由这些opcode组成的。
 
 ```c
@@ -26,7 +26,7 @@ struct _zend_op {
 };
 ```
 
-### 1.2、zend_op_array
+#### 3.3.1.2 zend_op_array
 `zend_op_array`是Zend引擎执行阶段的输入，是opcode的集合(当然并不仅仅如此)。
 
 ![zend_op_array](img/zend_op_array.png)
@@ -81,7 +81,7 @@ truct _zend_op_array {
 
 ```
 
-### 1.3、zend_executor_globals
+#### 3.3.1.3 zend_executor_globals
 `zend_executor_globals executor_globals`是PHP整个生命周期中最主要的一个结构，是一个全局变量，在main执行前分配(非ZTS下)，直到PHP退出，它记录着当前请求全部的信息，经常见到的一个宏`EG`操作的就是这个结构。
 ```c
 //zend_compile.c
@@ -97,7 +97,7 @@ ZEND_API zend_executor_globals executor_globals;
 
 ![EG](img/EG.png)
 
-### 1.4、zend_execute_data
+#### 3.3.1.4 zend_execute_data
 `zend_execute_data`是执行过程中最核心的一个结构，每次函数的调用、include/require、eval等都会生成一个新的结构，它表示当前的作用域、代码的执行位置以及局部变量的分配等等，等同于机器码执行过程中stack的角色，后面分析具体执行流程的时候会详细分析其作用。
 
 ```c
@@ -122,7 +122,7 @@ struct _zend_execute_data {
 };
 ```
 
-## 2、执行流程
+### 3.3.2 执行流程
 Zend的executor与linux二进制程序执行的过程是非常类似的，在C程序执行时有两个寄存器ebp、esp分别指向当前作用栈的栈顶、栈底，局部变量全部分配在当前栈，函数调用、返回通过`call`、`ret`指令完成，调用时`call`将当前执行位置压入栈中，返回时`ret`将之前执行位置出栈，跳回旧的位置继续执行，在Zend VM中`zend_execute_data`就扮演了这两个角色，`zend_execute_data.prev_execute_data`保存的是调用方的信息，实现了`call/ret`，`zend_execute_data`后面会分配额外的内存空间用于局部变量的存储，实现了`ebp/esp`的作用。
 
 注意：在执行前分配内存时并不仅仅是分配了`zend_execute_data`大小的空间，除了`sizeof(zend_execute_data)`外还会额外申请一块空间，用于分配局部变量、临时(中间)变量等，具体的分配过程下面会讲到。
@@ -276,7 +276,7 @@ ZEND_API void execute_ex(zend_execute_data *ex)
 大概的执行过程上面已经介绍过了，这里只分析下整体执行流程，至于PHP各语法具体的handler处理后面会单独列一章详细分析。
 
 #### (4)释放stack
-这一步就比较简单了，只是将申请的`zend_execute_data`内存释放给内存池，具体的操作只需要修改几个指针即可：
+这一步就比较简单了，只是将申请的`zend_execute_data`内存释放给内存池(注意这里并不是变量的销毁)，具体的操作只需要修改几个指针即可：
 
 ```c
 static zend_always_inline void zend_vm_stack_free_call_frame_ex(uint32_t call_info, zend_execute_data *call)
