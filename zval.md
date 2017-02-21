@@ -85,8 +85,8 @@ struct _zval_struct {
 #define IS_PTR                      17
 ```
 
-#### 2.1.2.1 基本类型
-最简单的类型是true、false、long、double、null，其中true、false、null没有value，直接根据type区分，而long、double的值则直接存在value中：zend_long、double。
+#### 2.1.2.1 标量类型
+最简单的类型是true、false、long、double、null，其中true、false、null没有value，直接根据type区分，而long、double的值则直接存在value中：zend_long、double，也就是标量类型不需要额外的value指针。
 
 #### 2.1.2.2 字符串
 PHP中字符串通过`zend_string`表示:
@@ -102,6 +102,8 @@ struct _zend_string {
 * __h：__哈希值，数组中计算索引时会用到
 * __len：__字符串长度，通过这个值保证二进制安全
 * __val：__字符串内容，变长struct，分配时按len长度申请内存
+
+事实上字符串又可具体分为几类：IS_STR_PERSISTENT(通过malloc分配的)、IS_STR_INTERNED(php代码里写的一些字面量，比如函数名、变量值)、IS_STR_PERMANENT(永久值，生命周期大于request)、IS_STR_CONSTANT(常量)、IS_STR_CONSTANT_UNQUALIFIED，这个信息通过flag保存：zval.value->gc.u.flags，后面用到的时候再具体分析。
 
 #### 2.1.2.3 数组
 array是PHP中非常强大的一个数据结构，它的底层实现就是普通的有序HashTable，这里简单看下它的结构，下一节会单独分析数组的实现。
@@ -228,9 +230,9 @@ $b = $a;
 $a,$b -> zend_string_1(refcount=0,val="hi~")
 ```
 
-事实上并不是所有的PHP变量都会用到引用计数，基本类型：true/false/double/long/null是硬拷贝自然不需要这种机制，但是除了这几个还有两个特殊的类型也不会用到：interned string(内部字符串)、immutable array，它们的type是`IS_STRING`、`IS_ARRAY`，与普通string、array类型相同，那怎么区分一个value是否支持引用计数呢？还记得`zval.u1`中那个类型掩码`type_flag`吗？正是通过这个字段标识的，这个字段除了标识value是否支持引用计数外还有其它几个标识位，按位分割。
+事实上并不是所有的PHP变量都会用到引用计数，标量：true/false/double/long/null是硬拷贝自然不需要这种机制，但是除了这几个还有两个特殊的类型也不会用到：interned string(内部字符串，就是上面提到的字符串flag：IS_STR_INTERNED)、immutable array，它们的type是`IS_STRING`、`IS_ARRAY`，与普通string、array类型相同，那怎么区分一个value是否支持引用计数呢？还记得`zval.u1`中那个类型掩码`type_flag`吗？正是通过这个字段标识的，这个字段除了标识value是否支持引用计数外还有其它几个标识位，按位分割。
 
-支持引用计数的value类型其`zval.u1.type_flag`为`IS_TYPE_REFCOUNTED`：
+支持引用计数的value类型其`zval.u1.type_flag`__包含__(注意是&，不是等于)`IS_TYPE_REFCOUNTED`：
 ```c
 #define IS_TYPE_REFCOUNTED          (1<<2)
 ```
