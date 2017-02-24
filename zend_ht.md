@@ -2,11 +2,10 @@
 
 PHP7内部哈希表，即PHP强大array结构的内核实现。
 
-哈希表是PHP内部非常重要的数据结构，除了PHP用户空间的Array，内核也随处用到，比如function、class的索引、符号表等等都用到了哈希表。
+哈希表是PHP内部非常重要的数据结构，除了PHP用户空间的Array，内核也随处用到，比如函数、类、常量、已include文件的索引表、全局符号表等等都用到了哈希表。
 
 关于哈希结构PHP7+与PHP5+的区别可以翻下[[nikic]](http://nikic.github.io/2014/12/22/PHPs-new-hashtable-implementation.html)早些时候写的一篇文章，这里不作讨论。
 
-示例中的HastTable实现并不是将PHP实际的实现摘出来的，而是根据PHP的实现按照自己的思路具体实现的，可以作为参考。
 
 ### 数据结构
 ```c
