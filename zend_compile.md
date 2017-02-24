@@ -71,7 +71,7 @@ err:
 PHP编译最终生成的opcode数组结构为：
 
 ```c
-truct _zend_op_array {
+struct _zend_op_array {
     //common是普通函数或类成员方法对应的opcodes快速访问时使用的字段，后面分析PHP函数实现的时候会详细讲
     /* Common elements */
     zend_uchar type; //标识函数类型：1为PHP内部函数(扩展或内核提供的函数)、2为用户自定义函数(即PHP代码中写的function)
