@@ -16,6 +16,11 @@
       * [3.2.2 用户函数的实现](function_implement.md#用户自定义函数的实现)
    * [3.3 Zend引擎执行流程](zend_executor.md)
    * 3.4 面向对象实现
+      * 3.4.1 类(zend_class.md)
+      * 3.4.2 对象(zend_object.md)
+      * 3.4.3 成员属性和方法
+      * 3.4.4 魔术方法
+      * 3.4.5 抽象类和接口
 * [第4章 PHP语法实现](php_language.md)
    * 4.1 变量
    * 4.2 运算符
