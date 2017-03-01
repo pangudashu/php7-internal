@@ -17,7 +17,6 @@ class 类名 {
 
 #### 3.4.1.1 类的结构及存储
 首先我们看下类的数据结构：
-
 ```c
 struct _zend_class_entry {
     char type;          //类的类型：内部类ZEND_INTERNAL_CLASS(1)、用户自定义类ZEND_USER_CLASS(2)
@@ -52,6 +51,7 @@ struct _zend_class_entry {
 
     zend_class_iterator_funcs iterator_funcs;
 
+    //下面这几个暂时忽略，后面碰到的时候再分析其作用
     /* handlers */
     zend_object* (*create_object)(zend_class_entry *class_type);
     zend_object_iterator *(*get_iterator)(zend_class_entry *ce, zval *object, int by_ref);
@@ -62,9 +62,9 @@ struct _zend_class_entry {
     int (*serialize)(zval *object, unsigned char **buffer, size_t *buf_len, zend_serialize_data *data);
     int (*unserialize)(zval *object, zend_class_entry *ce, const unsigned char *buf, size_t buf_len, zend_unserialize_data *data);
 
-    uint32_t num_interfaces;
+    uint32_t num_interfaces; //实现的接口数
     uint32_t num_traits;
-    zend_class_entry **interfaces;
+    zend_class_entry **interfaces; //实现的接口
 
     zend_class_entry **traits;
     zend_trait_alias **trait_aliases;
