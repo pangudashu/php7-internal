@@ -84,6 +84,31 @@ struct _zend_class_entry {
     } info;
 }
 ```
+举个例子具体看下，定义一个User类，它继承了Human类，User类中有一个常量、一个静态属性、两个普通属性：
+```php
+<?php
+
+class Human {}
+
+class User extends Human
+{
+    const type = 110;
+
+    static $name = "uuu";
+    public $uid = 900;
+    public $sex = 'w';
+
+    public function __construct(){
+    }
+
+    public function getName(){
+        return $this->name;
+    }
+}
+```
+其对应的zend_class存储结构如下图。
+
+![zend_class](img/zend_class.png)
 
 #### 3.4.1.2 成员属性
 
