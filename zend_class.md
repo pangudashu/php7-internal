@@ -154,7 +154,7 @@ class my_class {
 
 ![zend_class_property](img/zend_class_property.png)
 
-看到这里你可能有个疑问：使用时成员属性是如果找到的呢？
+看到这里可能有个疑问：使用时成员属性是如果找到的呢？
 
 实际只是成员属性的__VALUE__通过数组存储的，访问时仍然是根据以"属性名"为索引的散列表查找具体VALUE的，这个散列表并没有按照普通属性、静态属性分为两个，而是只用了一个：__HashTable properties_info__。此哈希表存储元素的value类型为__zend_property_info__。
 
@@ -175,12 +175,29 @@ typedef struct _zend_property_info {
 
 #define ZEND_ACC_STATIC         0x01
 ```
-
-![zend_property_info](img/zend_property_info.png)
-
 * __offset__：这个值记录的就是上面说的通过数组保存的属性值的索引，也就是说属性值保存在一个数组中，然后将其在数组中的位置保存在offset中，另外需要说明的一点的是普通属性、静态属性这个值用法是不一样的，静态属性是类的范畴，与对象无关，所以其offset为default_static_members_table数组的下标：0,、1、2......，而普通属性归属于对象，每个对象有其各自的属性，所以这个offset记录的实际是各属性在object中偏移值(在后面《3.4.2 对象》一节我们再具体说明普通属性的存储方式)，其值是：40、56、72......是按照zval的内存大小偏移的
 * __flags__：bit位，标识的是属性的信息，如public、private、protected及是否为静态属性
 
 剩下几个值含义比较明了不再多说。
 
+举个例子：
+```php
+class my_class {
+    public $property_1 = "aa";
+    public $property_2 = array();
+
+    public static $property_3 = 110;
+}
+```
+则__default_properties_table__、__default_static_properties_table__、__properties_info__关系图：
+
+![zend_property_info](img/zend_property_info.png)
+
+__静态成员变量保存在类中，各对象共享同一份数据，而普通属性属于对象，各对象独享。__
+
 #### 3.4.1.4 成员方法
+每个类可以定义若干属于本类的函数(称之为成员方法)，这种函数与普通的function相同，只是以类的维度进行管理，不是全局性的，所以成员方法保存在类中而不是EG(function_table)。
+
+![zend_class_function](img/zend_class_function.png)
+
+
