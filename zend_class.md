@@ -113,6 +113,12 @@ class User extends Human
 
 ![zend_class](img/zend_class.png)
 
+开始的时候已经提到，类是编译阶段的产物，编译完成后我们定义的每个类都会生成一个zend_class_entry，它保存着类的全部信息，在执行阶段所有类相关的操作都是用的这个结构。
+
+所有PHP脚本中定义的类以及内核、扩展中定义的内部类通过一个以"类名"作为索引的哈希表存储，这个哈希表保存在Zend引擎global变量中：__zend_executor_globals.class_table__(即：__EG(class_table)__)，与function的存储相同，关于这个global变量前面[《3.3.1.3 zend_executor_globals》](zend_executor.md#3313-zend_executor_globals)已经讲过。
+
+![zend_eg_class](img/zend_eg_class.png)
+
 在接下来的小节中我们将对类的常量、成员属性、成员方法的实现具体分析。
 
 #### 3.4.1.2 类常量
@@ -150,6 +156,17 @@ class my_class {
 
 看到这里你可能有个疑问：使用时成员属性是如果找到的呢？
 
-实际只是成员属性的__VALUE__通过数组存储的，访问时仍然是根据以"属性名"为索引的散列表查找具体VALUE的，这个散列表并没有按照普通属性、静态属性分为两个，而是只用了一个：__HashTable properties_info__。
+实际只是成员属性的__VALUE__通过数组存储的，访问时仍然是根据以"属性名"为索引的散列表查找具体VALUE的，这个散列表并没有按照普通属性、静态属性分为两个，而是只用了一个：__HashTable properties_info__。此哈希表存储元素的value类型为__zend_property_info__。
+
+```c
+typedef struct _zend_property_info {
+    uint32_t offset; //普通成员变量的内存偏移值
+                     //静态成员变量的数组索引
+    uint32_t flags;  //属性掩码，如public、private、protected及是否为静态变量
+    zend_string *name; //属性名
+    zend_string *doc_comment;
+    zend_class_entry *ce; //所属类
+} zend_property_info;
+```
 
 #### 3.4.1.4 成员方法
