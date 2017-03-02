@@ -1,7 +1,9 @@
 ### 3.4.1 类
 类是现实世界或思维世界中的实体在计算机中的反映，它将某些具有关联关系的数据以及这些数据上的操作封装在一起。在面向对象中类是对象的抽象，对象是类的具体实例。
 
-在PHP中我们这样定义一个类：
+在PHP中类编译阶段的产物，而对象是运行时产生的，它们归属于不同阶段。
+
+PHP中我们这样定义一个类：
 ```php
 class 类名 {
     常量;
@@ -88,8 +90,7 @@ struct _zend_class_entry {
 ```
 举个例子具体看下，定义一个User类，它继承了Human类，User类中有一个常量、一个静态属性、两个普通属性：
 ```php
-<?php
-
+//父类
 class Human {}
 
 class User extends Human
@@ -119,7 +120,6 @@ PHP中可以把在类中始终保持不变的值定义为常量，在定义和�
 
 常量通过__const__定义：
 ```php
-<?php
 class my_class {
     const 常量名 = 常量值;
 }
@@ -133,6 +133,23 @@ class my_class {
 
 属性中的变量可以初始化，但是初始化的值必须是常数，这里的常数是指 PHP 脚本在编译阶段时就可以得到其值，而不依赖于运行时的信息才能求值，比如`public $time = time();`这样定义一个属性就会触发语法错误。
 
-成员属性又分为两类：普通属性、静态属性。静态属性通过__static__声明，通过__self::$property__或__类名::$property__访问；普通属性通过__$this->property__或__$object->property__访问。
+成员属性又分为两类：__普通属性__、__静态属性__。静态属性通过__static__声明，通过__self::$property__或__类名::$property__访问；普通属性通过__$this->property__或__$object->property__访问。
+
+```php
+class my_class {
+    //普通属性
+    public $property = 初始化值;
+
+    //静态属性
+    public static $property_2 = 初始化值;
+}
+```
+与常量的存储方式不同，成员属性的__初始化值__并不是__直接__用以"属性名"作为索引的哈希表存储的，而是通过数组保存的，普通属性、静态属性各有一个数组分别存储。
+
+![zend_class_property](img/zend_class_property.png)
+
+看到这里你可能有个疑问：使用时成员属性是如果找到的呢？
+
+实际只是成员属性的__VALUE__通过数组存储的，访问时仍然是根据以"属性名"为索引的散列表查找具体VALUE的，这个散列表并没有按照普通属性、静态属性分为两个，而是只用了一个：__HashTable properties_info__。
 
 #### 3.4.1.4 成员方法
