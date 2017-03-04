@@ -200,4 +200,4 @@ __静态成员变量保存在类中，各对象共享同一份数据，而普通
 
 ![zend_class_function](img/zend_class_function.png)
 
-
+成员方法的调用与普通function过程相同，根据对象所属class取到method编译的op_array，然后执行，具体的过程上一节已经介绍过[《3.3 Zend引擎执行过程》](zend_executor.md)，下一节介绍对象的时候我们再从一个示例具体追踪下详细的调用过程。
