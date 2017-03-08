@@ -10,7 +10,7 @@ C程序在编译时将一行行代码编译为机器码，每一个操作都认�
 
 同样，PHP的编译与普通的C程序类似，只是PHP代码没有编译成机器码，而是解析成了若干条opcode数组，每条opcode就是C里面普通的struct，含义对应C程序的机器指令，执行的过程就是引擎依次执行opcode，比如我们在PHP里定义一个变量:`$a = 123;`，最终到内核里执行就是malloc一块内存，然后把值写进去。
 
-所以PHP的解析过程任务就是将PHP代码转化为opcode数组，代码里的所有信息都保存在opcode中，然后将opcode数组交给zend引擎执行，opcode就是内核具体执行的命令，比如赋值、加减操作、函数调用等，每一条opcode都对应一个处理handle，这些handler全部是提前定义好的C函数。
+所以PHP的解析过程任务就是将PHP代码转化为opcode数组，代码里的所有信息都保存在opcode中，然后将opcode数组交给zend引擎执行，opcode就是内核具体执行的命令，比如赋值、加减操作、函数调用等，每一条opcode都对应一个处理handle，这些handler是提前定义好的C函数。
 
 从PHP代码到opcode是怎么实现的？最容易想到的方式就是正则匹配，当然过程没有这么简单。PHP编译过程包括词法分析、语法分析，使用re2c、bison完成，旧的PHP版本直接生成了opcode，PHP7新增了抽象语法树（AST），在语法分析阶段生成AST，然后再生成opcode数组。
 
@@ -71,7 +71,9 @@ PHP编译阶段的基本过程如下图：
 
 ![zend_compile_process](img/zend_compile_process.png)
 
-PHP编译最终生成的opcode数组结构为：
+zendparse、zend_compile_top_stmt的过程没作深入研究，这里只大致说下这两个过程：zendparse是词法、语法分析过程，即前面提到的re2c、bison，这个过程将PHP代码解析为AST，解析过程确定了当前脚本定义了哪些变量，为这些变量按照顺序编号，这些值在使用时都是按照这个编号获取的，另外也将变量的初始化值、调用的函数/类/常量名称等值(称之为字面量)保存到zend_op_array.literals中，这些字面量也有一个唯一的编号，所以执行的过程实际就是根据各指令调用不同的C函数，然后根据变量、字面量、临时变量的编号对这些值进行处理加工。
+
+PHP编译阶段最终的产物—opcode数组结构为：
 
 ![zend_compile](img/zend_compile.png)
 
@@ -95,7 +97,8 @@ struct _zend_op_array {
     uint32_t this_var;
 
     uint32_t last;
-    zend_op *opcodes; //opcode指令
+    //opcode指令数组
+    zend_op *opcodes;
 
     //PHP代码里定义的变量数：op_type为IS_CV的变量，不含IS_TMP_VAR、IS_VAR的
     int last_var;
@@ -270,13 +273,21 @@ ZEND_API void zend_vm_set_opcode_handler(zend_op* op)
 #define _CV_CODE     4
 ```
 
-#### 3.1.2.2 操作数
+#### 3.1.2.2 操作数(znode_op)
+操作数类型实际就是个32位整形，它主要用于存储一些变量的索引位置、数值记录等等。
 
-每条opcode都有两个操作数(不一定都有用)、一个返回值，其中handler是具体执行的方法，handler通过opcode、op1_type、op2_type三个值索引到，每条opcode都最多有(5*5)个不同的处理handler，后面分析zend执行的时候再具体讲这块。
+```c
+typedef union _znode_op {
+    uint32_t      constant;
+    uint32_t      var;
+    uint32_t      num;
+    uint32_t      opline_num; /*  Needs to be signed */
+    uint32_t      jmp_offset;
+} znode_op;
+```
+每条opcode都有两个操作数(不一定都用到)，操作数记录着当前指令的关键信息，可以用于变量的存储、访问，比如赋值语句："$a = 45;",两个操作数分别记录"$a"、"45"的存储位置，执行时根据op2取到值"45"，然后赋值给"$a"，而"$a"的位置通过op1获取到。当然操作数并不是全部这么用的，上面只是赋值时候的情况，其它操作会有不同的用法，如函数调用时的传参，op1记录的就是传递的参数是第几个，op2记录的是参数的存储位置，result记录的是函数接收参数的存储位置。
 
-操作数记录着当前指令的关键信息，可以用于变量的存储、访问，比如赋值语句："$a = 45;",两个操作数分别记录"$a"、"45"的存储位置，执行时根据op2取到值"45"，然后赋值给"$a"，而"$a"的位置通过op1获取到。当然操作数并不是全部这么用的，上面只是赋值时候的情况，其它操作会有不同的用法，如函数调用时的传参，op1记录的就是传递的参数是第几个，op2记录的是参数的存储位置，result记录的是函数接收参数的存储位置。
-
-#### 3.1.2.3 操作数类型
+#### 3.1.2.3 操作数类型(op_type)
 
 每个操作都有5种不同的类型：
 
@@ -287,15 +298,15 @@ ZEND_API void zend_vm_set_opcode_handler(zend_op* op)
 #define IS_UNUSED   (1<<3)  //8
 #define IS_CV       (1<<4)  //16
 ```
-* IS_CONST    常量（字面量），编译时就可确定且不会改变的值，比如:$a = "hello~"，其中字符串"hello~"就是常量
-* IS_TMP_VAR  临时变量，比如：$a = "hello~" . time()，其中`"hello~" . time()`的值类型就是IS_TMP_VAR，再比如:$a = "123" + $b，`"123" + $b`的结果类型也是IS_TMP_VAR，从这两个例子可以猜测，临时变量多是执行期间其它类型组合现生成的一个中间值，由于它是现生成的，所以把IS_TMP_VAR赋值给IS_CV变量时不会增加其引用计数
-* IS_VAR      PHP变量，这个很容易认为是PHP脚本里的变量，其实不是，这里PHP变量的含义可以这样理解：PHP变量是没有显式的在PHP脚本中定义的，不是直接在代码通过`$var_name`定义的。这个类型最常见的例子是PHP函数的返回值，再如`$a[0]`数组这种，它取出的值也是`IS_VAR`，再比如`$$a`这种
-* IS_UNUSED   表示操作数没有用
-* IS_CV       PHP脚本变量，即脚本里通过`$var_name`定义的变量，这些变量是编译阶段确定的，所以是compile variable，
+* IS_CONST：字面量，编译时就可确定且不会改变的值，比如:$a = "hello~"，其中字符串"hello~"就是常量
+* IS_TMP_VAR：临时变量，比如：$a = "hello~" . time()，其中`"hello~" . time()`的值类型就是IS_TMP_VAR，再比如:$a = "123" + $b，`"123" + $b`的结果类型也是IS_TMP_VAR，从这两个例子可以猜测，临时变量多是执行期间其它类型组合现生成的一个中间值，由于它是现生成的，所以把IS_TMP_VAR赋值给IS_CV变量时不会增加其引用计数
+* IS_VAR：PHP变量，这个很容易认为是PHP脚本里的变量，其实不是，这里PHP变量的含义可以这样理解：PHP变量是没有显式的在PHP脚本中定义的，不是直接在代码通过`$var_name`定义的。这个类型最常见的例子是PHP函数的返回值，再如`$a[0]`数组这种，它取出的值也是`IS_VAR`，再比如`$$a`这种
+* IS_UNUSED：表示操作数没有用
+* IS_CV：PHP脚本变量，即脚本里通过`$var_name`定义的变量，这些变量是编译阶段确定的，所以是compile variable，
 
 `result_type`除了上面几种类型外还有一种类型`EXT_TYPE_UNUSED (1<<5)`，返回值没有使用时会用到，这个跟`IS_UNUSED`的区别是：`IS_UNUSED`表示本操作返回值没有意义(也可简单的认为没有返回值)，而`EXT_TYPE_UNUSED`的含义是有返回值，但是没有用到，比如函数返回值没有接收。
 
-#### 3.1.2.4 常量(字面量)、变量的读写
+#### 3.1.2.4 字面量、变量的读写
 
 我们先想一下C程序是如何读写字面量、变量的。
 
@@ -345,5 +356,3 @@ $a = 56;
 $b = "hello";
 ```
 `56`通过`(zval*)(_zend_op_array->literals + 0)`取到，`hello`通过`(zval*)(_zend_op_array->literals + 16)`取到,具体变量的读写操作将在执行阶段详细分析，这里只分析编译阶段的操作。
-
-
