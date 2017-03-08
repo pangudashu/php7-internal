@@ -27,59 +27,14 @@ struct _zend_op {
 ```
 
 #### 3.3.1.2 zend_op_array
-`zend_op_array`是Zend引擎执行阶段的输入，是opcode的集合(当然并不仅仅如此)。
+`zend_op_array`是Zend引擎执行阶段的输入，整个执行阶段的操作都是围绕着这个结构，关于其具体结构前面我们已经讲过了。
 
 ![zend_op_array](img/zend_op_array.png)
 
-```c
-truct _zend_op_array {
-    /* Common elements */
-    zend_uchar type; //标识函数类型：1为PHP内部函数(扩展或内核提供的函数)、2为用户自定义函数(即PHP代码中写的function)
-    zend_uchar arg_flags[3]; /* bitset of arg_info.pass_by_reference */
-    uint32_t fn_flags;
-    zend_string *function_name; //函数名
-    zend_class_entry *scope; //所属class
-    zend_function *prototype;
-    uint32_t num_args; //参数数量
-    uint32_t required_num_args; //必传参数数量
-    zend_arg_info *arg_info; //参数信息
-    /* END of common elements */
-
-    uint32_t *refcount;
-
-    uint32_t this_var;
-
-    uint32_t last;
-    zend_op *opcodes; //opcode指令数组
-
-    int last_var;
-    uint32_t T; //临时变量数
-    zend_string **vars; //PHP变量名列表
-
-    int last_brk_cont;
-    int last_try_catch;
-    zend_brk_cont_element *brk_cont_array;
-    zend_try_catch_element *try_catch_array;
-
-    /* static variables support */
-    HashTable *static_variables; //静态变量符号表
-
-    zend_string *filename; //PHP文件路径
-    uint32_t line_start;
-    uint32_t line_end;
-    zend_string *doc_comment;
-    uint32_t early_binding; /* the linked list of delayed declarations */
-
-    int last_literal; 
-    zval *literals; //字面量(常量)数组
-
-    int  cache_size;
-    void **run_time_cache;
-
-    void *reserved[ZEND_MAX_RESERVED_RESOURCES];
-};
-
-```
+这里再重复说下zend_op_array几个核心组成部分：
+* __opcode指令__：即PHP代码具体对应的处理动作，与二进制程序中的代码段对应
+* __字面量存储__：PHP代码中定义的一些变量初始值、调用的函数名称、类名称、常量名称等等称之为字面量，这些值用于执行时初始化变量、函数调用等等
+* __变量分配情况__：与字面量类似，这里指的是当前opcodes定义了多少变量、临时变量，每个变量都有一个对应的编号，执行初始化按照总的数目一次性分配zval，使用时也完全按照编号索引，而不是根据变量名索引
 
 #### 3.3.1.3 zend_executor_globals
 `zend_executor_globals executor_globals`是PHP整个生命周期中最主要的一个结构，是一个全局变量，在main执行前分配(非ZTS下)，直到PHP退出，它记录着当前请求全部的信息，经常见到的一个宏`EG`操作的就是这个结构。
