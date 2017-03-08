@@ -191,7 +191,7 @@ static zend_always_inline zend_execute_data *zend_vm_stack_push_call_frame_ex(ui
 }
 ```
 
-#### (2)初始化execute_data
+#### (2)初始化zend_execute_data
 注意，这里的初始化是整个php脚本最初的那个，并不是指函数调用时的，这一步的操作主要是设置几个指针:`opline`、`call`、`return_value`，同时将PHP的全局变量添加到`EG(symbol_table)`中去：
 ```c
 //zend_execute.c
@@ -263,5 +263,60 @@ static zend_always_inline void zend_vm_stack_free_call_frame(zend_execute_data *
     zend_vm_stack_free_call_frame_ex(ZEND_CALL_INFO(call), call);
 }
 ```
+
+### 3.3.3 函数的执行流程
+
+上一节我们介绍了zend执行引擎的几个关键步骤，函数的调用过程其实与上面一致，这里再具体总结下：
+
+* __初始化阶段：__这个阶段首先查找到函数的zend_function，普通function就是到EG(function_table)中查找，成员方法则先从EG(class_table)中找到zend_class_entry，然后再进一步在其function_table找到zend_function，接着就是根据zend_op_array新分配__zend_execute_data__结构并设置上下文切换的指针
+* __参数传递阶段：__如果函数没有参数则跳过此步骤，有的话则会将函数所需参数传递到__初始化阶段__新分配的__zend_execute_data动态变量区__
+* __函数调用阶段：__这个步骤主要是做上下文切换，将执行器切换到调用的函数上，可以理解会在这个阶段__递归调用zend_execute_ex__函数实现call的过程(实际并一定是递归，默认是在while(1){...}中切换执行空间的，但如果我们在扩展中重定义了zend_execute_ex用来介入执行流程则就是递归调用)
+* __函数执行阶段：__被调用函数内部的执行过程，首先是接收参数，然后开始执行opcode
+* __函数返回阶段：__被调用函数执行完毕返回过程，将返回值传递给调用方的zend_execute_data变量区，然后释放zend_execute_data以及分配的局部变量，将上下文切换到调用前，回到调用的位置继续执行
+
+函数的调用过程还是比较容易理解的，不再举例具体分析其各个过程，这里额外说下return过程，这个过程有一个重要操作就是__销毁局部变量(仅函数调用这一种情况)__，这一步操作在`zend_leave_helper_SPEC`中完成：
+
+```c
+static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL zend_leave_helper_SPEC(ZEND_OPCODE_HANDLER_ARGS)
+{
+    zend_execute_data *old_execute_data;
+    uint32_t call_info = EX_CALL_INFO();
+
+    if (EXPECTED(ZEND_CALL_KIND_EX(call_info) == ZEND_CALL_NESTED_FUNCTION)) {
+        //普通的函数调用将走到这个分支
+
+        i_free_compiled_variables(execute_data);
+        ...
+    }
+    //include、eval及整个脚本的结束(main函数)走到下面
+    //...
+}
+
+//zend_execute.c
+static zend_always_inline void i_free_compiled_variables(zend_execute_data *execute_data)
+{
+    zval *cv = EX_VAR_NUM(0);
+    zval *end = cv + EX(func)->op_array.last_var;
+    while (EXPECTED(cv != end)) {
+        if (Z_REFCOUNTED_P(cv)) {
+            if (!Z_DELREF_P(cv)) { //引用计数减一后为0
+                zend_refcounted *r = Z_COUNTED_P(cv);
+                ZVAL_NULL(cv);
+                zval_dtor_func_for_ptr(r); //释放变量值
+            } else {
+                GC_ZVAL_CHECK_POSSIBLE_ROOT(cv); //引用计数减一后>0，启动垃圾检查机制，清理循环引用导致无法回收的垃圾
+            }
+        }
+        cv++;
+    }
+}
+```
+这就是函数返回前清理局部变量的操作，除了函数这种情况外还有两种情况也有return操作：
+
+* __1.PHP主脚本执行结束时：__也就是PHP脚本开始执行的入口脚本(PHP没有显式的main函数，这种就可以认为是main函数)，但是这种情况并不会在return时清理，因为在main函数中定义的变量并非纯碎的局面变量，它们都是全局变量，与$__GET、$__POST是一类，这些全局变量的清理是在request_shutdown阶段处理
+* __2.include、eval：__以include为例，如果include的文件中定义了全局变量，那么这些变量实际与上面1的情况一样，它们的存储位置是在一起的
+
+所以实际上面说的这两种情况属于一类，它们并不是局部变量的清理，而是__全局变量的清理__。
+
 
 
