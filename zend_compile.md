@@ -306,7 +306,7 @@ typedef union _znode_op {
 
 `result_type`除了上面几种类型外还有一种类型`EXT_TYPE_UNUSED (1<<5)`，返回值没有使用时会用到，这个跟`IS_UNUSED`的区别是：`IS_UNUSED`表示本操作返回值没有意义(也可简单的认为没有返回值)，而`EXT_TYPE_UNUSED`的含义是有返回值，但是没有用到，比如函数返回值没有接收。
 
-#### 3.1.2.4 字面量、变量的读写
+#### 3.1.2.4 字面量、变量的存储
 
 我们先想一下C程序是如何读写字面量、变量的。
 
@@ -343,13 +343,11 @@ main:
 ```
 可以看到`movq    $.LC0, -8(%rbp)`，而`-8(%rbp)`就是name变量。
 
-关于C程序的执行过程、内存分配可以看:[https://github.com/pangudashu/anywork/tree/master/func_execute](https://github.com/pangudashu/anywork/tree/master/func_execute)
-
 虽然PHP代码不会直接编译为机器码，但编译、执行的设计跟C程序是一致的，也有常量区、变量也通过偏移量访问、也有虚拟的执行栈。
 
 ![php vs c](img/php_vs_c.png)
 
-在编译时就可确定且不会改变的量称为字面量，也称作常量(IS_CONST)，这些值在编译阶段就已经分配zval，保存在`_zend_op_array->literals`数组中(对应c程序的常量内存区)，访问时通过`_zend_op_array->literals + 偏移量`读取，举个例子：
+在编译时就可确定且不会改变的量称为字面量，也称作常量(IS_CONST)，这些值在编译阶段就已经分配zval，保存在`zend_op_array->literals`数组中(对应c程序的常量内存区)，访问时通过`_zend_op_array->literals + 偏移量`读取，举个例子：
 ```c
 <?php
 $a = 56;
