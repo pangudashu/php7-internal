@@ -2,6 +2,8 @@
 
 (更新中...)
 
+文中涉及代码版本：php-7.0.12
+
 * 第1章 PHP基本架构
    * 1.1 基本概念(base_introduction.md)
    * [1.2 PHP框架执行流程](base_process.md)

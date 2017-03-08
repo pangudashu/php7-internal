@@ -14,6 +14,8 @@ C程序在编译时将一行行代码编译为机器码，每一个操作都认�
 
 从PHP代码到opcode是怎么实现的？最容易想到的方式就是正则匹配，当然过程没有这么简单。PHP编译过程包括词法分析、语法分析，使用re2c、bison完成，旧的PHP版本直接生成了opcode，PHP7新增了抽象语法树（AST），在语法分析阶段生成AST，然后再生成opcode数组。
 
+![zend_compile2](img/zend_compile2.png)
+
 re2c的示例:(http://re2c.org/examples/examples.html)
 ```c
 #include <stdio.h>
@@ -64,11 +66,14 @@ err: ?
 err:
 ```
 
-![zend_compile](img/zend_compile.png)
+### 3.1.2 编译过程
+PHP编译阶段的基本过程如下图：
 
-### 3.1.2 编译输出
+![zend_compile_process](img/zend_compile_process.png)
 
 PHP编译最终生成的opcode数组结构为：
+
+![zend_compile](img/zend_compile.png)
 
 ```c
 struct _zend_op_array {
@@ -92,17 +97,20 @@ struct _zend_op_array {
     uint32_t last;
     zend_op *opcodes; //opcode指令
 
-    int last_var;//PHP代码里定义的变量数：op_type为IS_CV的变量
-    uint32_t T; //临时变量数:op_type为IS_TMP_VAR、IS_VAR的变量
-    zend_string **vars; //PHP变量名列表
+    //PHP代码里定义的变量数：op_type为IS_CV的变量，不含IS_TMP_VAR、IS_VAR的
+    int last_var;
+    //临时变量数:op_type为IS_TMP_VAR、IS_VAR的变量
+    uint32_t T;
+    //PHP变量名列表
+    zend_string **vars;
 
     int last_brk_cont;
     int last_try_catch;
     zend_brk_cont_element *brk_cont_array;
     zend_try_catch_element *try_catch_array;
 
-    /* static variables support */
-    HashTable *static_variables; //静态变量符号表
+    //静态变量符号表:通过static声明的
+    HashTable *static_variables;
 
     zend_string *filename; //PHP文件路径
     uint32_t line_start;
@@ -110,10 +118,14 @@ struct _zend_op_array {
     zend_string *doc_comment;
     uint32_t early_binding; /* the linked list of delayed declarations */
 
+    //字面量数量
     int last_literal; 
-    zval *literals; //字面量(常量)数组
+    //字面量(常量)数组，这些都是在PHP代码定义的一些值
+    zval *literals;
 
+    //运行时缓存数组大小
     int  cache_size;
+    //运行时缓存，主要用于缓存一些znode_op以便于快速获取数据，后面单独介绍这个机制
     void **run_time_cache;
 
     void *reserved[ZEND_MAX_RESERVED_RESOURCES];
