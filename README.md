@@ -15,11 +15,11 @@
    * [3.1 PHP代码的编译](zend_compile.md)
    * [3.2 函数实现](function_implement.md)
       * [3.2.1 内部函数](function_implement.md)
-      * [3.2.2 用户函数的实现](function_implement.md#用户自定义函数的实现)
+      * <a href="function_implement.md#用户自定义函数的实现">3.2.2 用户函数的实现</a>
    * [3.3 Zend引擎执行流程](zend_executor.md)
-      * <a href="zend_executor.md#331-数据结构">3.3.1 基本结构]</a>
-      * [3.3.2 执行流程](zend_executor.md#332-执行流程)
-      * [3.3.3 函数的执行流程](zend_executor.md#333-函数的执行流程)
+      * <a href="zend_executor.md#331-数据结构">3.3.1 基本结构</a>
+      * <a href="zend_executor.md#332-执行流程">3.3.2 执行流程</a>
+      * <a href="zend_executor.md#333-函数的执行流程">3.3.3 函数的执行流程</a>
    * 3.4 面向对象实现
       * [3.4.1 类](zend_class.md)
       * 3.4.2 对象(zend_object.md)
