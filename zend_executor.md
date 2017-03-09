@@ -325,7 +325,13 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INIT_FCALL_SPEC_CONST_HANDLER(
     ZEND_VM_NEXT_OPCODE();
 }
 ```
-![zend_exe_init](img/zend_exe_init.png)
+当前zend_execute_data及新生成的zend_execute_data关系：
+
+![zend_exe_init](img/func_exe_init.png)
+
+注意__This__这个值，它并不仅仅指的是面向对象中那个this，此外它还记录着其它两个值：
+* __call_info：__调用信息，通过__This.u1.reserved__记录，因为我们的主脚本、用户自定义函数调用、内核函数调用、include/require/eval等都会生成一个zend_execute_data，这个值就是用来区分这些不同类型的，对应的具体值为：ZEND_CALL_TOP_CODE、ZEND_CALL_NESTED_FUNCTION、ZEND_CALL_TOP_FUNCTION、ZEND_CALL_NESTED_CODE，这个信息是在分配zend_execute_data时显式声明的
+* __num_args：__函数调用实际传入的参数数量，通过__This.u2.num_args__记录，比如示例中我们定义的函数有3个参数，其中1个是必传的，而我们调用时传入了2个，所以这个例子中的num_args就是2，这个值在编译时知道的，保存在__zend_op->extended_value__中
 
 #### 3.3.3.2 参数传递阶段
 
