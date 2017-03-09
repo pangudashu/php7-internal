@@ -230,8 +230,6 @@ class my_class {
 
 ![zend_class_function](img/zend_class_function.png)
 
-成员方法的调用与普通function过程相同，根据对象所属class取到method编译的op_array，然后执行，具体的过程上一节已经介绍过[《3.3 Zend引擎执行过程》](zend_executor.md)。
-
 成员方法也有静态、非静态之分，静态方法中不能使用$this，因为其操作的作用域全部都是类的而不是对象的，而非静态方法中可以通过$this访问属于本对象的成员属性。
 
 静态方法也是通过static关键词定义：
@@ -251,14 +249,5 @@ my_class::$method();
 ```
 静态方法中调用其它静态方法或静态变量可以通过__self__访问。
 
-接下来我们以`my_class::test()`这种调用为例简单看下静态方法的调用过程，本节只介绍静态方法，关于非静态方法在对象一节再作讨论。
-
-函数的调用过程大致可分为以下几个步骤：
-
-* __初始化阶段：__这个阶段首先查找到函数的zend_function，普通function就是到EG(function_table)中查找，成员方法则先从EG(class_table)中找到zend_class_entry，然后再进一步在其function_table找到zend_function，接着就是根据zend_op_array新分配__zend_execute_data__结构并设置上下文切换的指针
-* __参数传递阶段：__如果函数没有参数则跳过此步骤，有的话则会将函数所需参数传递到__初始化阶段__新分配的__zend_execute_data动态变量区__
-* __函数调用阶段：__这个步骤主要是做上下文切换，将执行器切换到调用的函数上
-* __函数执行阶段：__被调用函数内部的执行过程
-* __函数返回阶段：__被调用函数执行完毕返回过程，将上下文切换到调用前
-
+成员方法的调用与普通function过程基本相同，根据对象所属类或直接根据类取到method的zend_function，然后执行，具体的过程[《3.3 Zend引擎执行过程》](zend_executor.md)已经详细说过，这里不再重复。
 
