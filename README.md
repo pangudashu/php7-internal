@@ -17,7 +17,7 @@
       * [3.2.1 内部函数](function_implement.md)
       * [3.2.2 用户函数的实现](function_implement.md#用户自定义函数的实现)
    * [3.3 Zend引擎执行流程](zend_executor.md)
-      * [3.3.1 基本结构](zend_executor.md#331-数据结构)
+      * <a href="zend_executor.md#331-数据结构">3.3.1 基本结构]</a>
       * [3.3.2 执行流程](zend_executor.md#332-执行流程)
       * [3.3.3 函数的执行流程](zend_executor.md#333-函数的执行流程)
    * 3.4 面向对象实现
