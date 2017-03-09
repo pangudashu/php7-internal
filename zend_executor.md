@@ -419,6 +419,9 @@ static zend_always_inline void i_init_func_execute_data(zend_execute_data *execu
 ![func_call](img/func_exe_call.png)
 
 #### 3.3.3.4 函数执行阶段
+这个过程就是函数内部opcode的执行流程，没什么特别的，唯一的不同就是前面会接收未传的参数，如下图所示。
+
+![](img/func_exe_start.png)
 
 #### 3.3.3.5 函数返回阶段
 这个过程有一个重要操作就是__销毁局部变量(仅函数调用这一种情况)__，这一步操作在`zend_leave_helper_SPEC`中完成：
