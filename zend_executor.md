@@ -272,11 +272,60 @@ static zend_always_inline void zend_vm_stack_free_call_frame(zend_execute_data *
 * __【参数传递阶段】：__如果函数没有参数则跳过此步骤，有的话则会将函数所需参数传递到__初始化阶段__新分配的__zend_execute_data动态变量区__
 * __【函数调用阶段】：__这个步骤主要是做上下文切换，将执行器切换到调用的函数上，可以理解会在这个阶段__递归调用zend_execute_ex__函数实现call的过程(实际并一定是递归，默认是在while(1){...}中切换执行空间的，但如果我们在扩展中重定义了zend_execute_ex用来介入执行流程则就是递归调用)
 * __【函数执行阶段】：__被调用函数内部的执行过程，首先是接收参数，然后开始执行opcode
-* __【函数返回阶段】：__被调用函数执行完毕返回过程，将返回值传递给调用方的zend_execute_data变量区，然后释放zend_execute_data以及分配的局部变量，将上下文切换到调用前，回到调用的位置继续执行
+* __【函数返回阶段】：__被调用函数执行完毕返回过程，将返回值传递给调用方的zend_execute_data变量区，然后释放zend_execute_data以及分配的局部变量，将上下文切换到调用前，回到调用的位置继续执行，这个实际是函数执行中的一部分，不算是独立的一个过程
 
-接下来我们详细分析下各个阶段的处理过程。
+接下来我们一个具体的例子详细分析下各个阶段的处理过程：
+```php
+function my_function($a, $b = false, $c = "hi"){
+    return $c;
+}
+
+$a = array();
+$b = true;
+
+my_function($a, $b);
+```
+主脚本、my_function的opcode为：
+
+![](img/func_exe_eg1.png)
 
 #### 3.3.3.1 初始化阶段
+此阶段的主要工作有两个：查找函数zend_function、分配zend_execute_data。
+
+上面的例子此过程执行的opcode为`ZEND_INIT_FCALL`，根据op_type计算可得handler为`ZEND_INIT_FCALL_SPEC_CONST_HANDLER`：
+```c
+static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INIT_FCALL_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
+{
+    USE_OPLINE
+
+    zval *fname = EX_CONSTANT(opline->op2); //调用的函数名称通过操作数2记录
+    zval *func;
+    zend_function *fbc;
+    zend_execute_data *call;
+
+    //这里牵扯到zend的一种缓存机制：运行时缓存，后面我们会单独分析，这里忽略即可
+    ...
+        //首先根据函数名去EG(function_table)索引zend_function
+        func = zend_hash_find(EG(function_table), Z_STR_P(fname));
+        if (UNEXPECTED(func == NULL)) {
+            SAVE_OPLINE();
+            zend_throw_error(NULL, "Call to undefined function %s()", Z_STRVAL_P(fname));
+            HANDLE_EXCEPTION();
+        }
+        fbc = Z_FUNC_P(func); //(*func).value.func
+    ...
+
+    //分配zend_execute_data
+    call = zend_vm_stack_push_call_frame_ex(
+        opline->op1.num, ZEND_CALL_NESTED_FUNCTION,
+        fbc, opline->extended_value, NULL, NULL);
+    call->prev_execute_data = EX(call);
+    EX(call) = call; //将当前正在运行的zend_execute_data.call指向新分配的zend_execute_data
+    
+    ZEND_VM_NEXT_OPCODE();
+}
+```
+![zend_exe_init](img/zend_exe_init.png)
 
 #### 3.3.3.2 参数传递阶段
 
