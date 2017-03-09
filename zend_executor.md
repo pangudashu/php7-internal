@@ -343,6 +343,80 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INIT_FCALL_SPEC_CONST_HANDLER(
 图中画的只是上面示例那种情况，比如`my_function(array());`直接传值则会是__literals区->新zend_execute_data动态变量区__的传递。
 
 #### 3.3.3.3 函数调用阶段
+这个过程主要是进行一些上下文切换，将执行器切换到调用的函数上。
+
+上面例子对应的opcode为`ZEND_DO_UCALL`，handler为`ZEND_DO_UCALL_SPEC_HANDLER`：
+```c
+static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_DO_UCALL_SPEC_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
+{
+    USE_OPLINE
+    zend_execute_data *call = EX(call);
+    zend_function *fbc = call->func;
+    zval *ret;
+
+    SAVE_OPLINE();
+    EX(call) = call->prev_execute_data;
+
+    EG(scope) = NULL;
+    ret = NULL;
+    call->symbol_table = NULL;
+    if (RETURN_VALUE_USED(opline)) {
+        ret = EX_VAR(opline->result.var); //函数返回值的存储位置
+        ZVAL_NULL(ret);
+        Z_VAR_FLAGS_P(ret) = 0;
+    }
+
+    call->prev_execute_data = execute_data; //将新zend_execute_data->prev_execute_data指向当前data
+    i_init_func_execute_data(call, &fbc->op_array, ret, 0);
+
+    ZEND_VM_ENTER();
+}
+
+//zend_execute.c
+static zend_always_inline void i_init_func_execute_data(zend_execute_data *execute_data, zend_op_array *op_array, zval *return_value, int check_this)
+{
+    uint32_t first_extra_arg, num_args;
+    ZEND_ASSERT(EX(func) == (zend_function*)op_array);
+
+    EX(opline) = op_array->opcodes;
+    EX(call) = NULL;
+    EX(return_value) = return_value;
+
+    first_extra_arg = op_array->num_args; //函数的总参数数量，示例中为3
+    num_args = EX_NUM_ARGS(); //实际传入参数数量，示例中为2
+    if (UNEXPECTED(num_args > first_extra_arg)) {
+        ...
+    } else if (EXPECTED((op_array->fn_flags & ZEND_ACC_HAS_TYPE_HINTS) == 0)) {
+        //跳过前面几个已经传参的参数接收的指令，因为已经显式的传递参数了，无需再接收默认值
+        EX(opline) += num_args;
+    }
+
+    //初始化动态变量区，将所有变量(除已经传入的外)设置为IS_UNDEF
+    if (EXPECTED((int)num_args < op_array->last_var)) {
+        zval *var = EX_VAR_NUM(num_args);
+        zval *end = EX_VAR_NUM(op_array->last_var);
+
+        do {
+            ZVAL_UNDEF(var);
+            var++;
+        } while (var != end);
+    }
+    ...
+
+    //分配运行时缓存，此机制后面再单独说明
+    if (UNEXPECTED(!op_array->run_time_cache)) {
+        op_array->run_time_cache = zend_arena_alloc(&CG(arena), op_array->cache_size);
+        memset(op_array->run_time_cache, 0, op_array->cache_size);
+    }
+    EX_LOAD_RUN_TIME_CACHE(op_array); //execute_data.run_time_cache = op_array.run_time_cache
+    EX_LOAD_LITERALS(op_array); //execute_data.literals = op_array.literals
+
+    //EG(current_execute_data)为执行器当前执行空间，将执行器切到函数内
+    EG(current_execute_data) = execute_data; 
+}
+```
+
+![func_call](img/func_exe_call.png)
 
 #### 3.3.3.4 函数执行阶段
 
