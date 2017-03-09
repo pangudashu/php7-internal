@@ -265,7 +265,7 @@ static zend_always_inline void zend_vm_stack_free_call_frame(zend_execute_data *
 ```
 
 ### 3.3.3 函数的执行流程
-
+（这里的函数指用户自定义的PHP函数，不含内部函数）
 上一节我们介绍了zend执行引擎的几个关键步骤，函数的调用过程其实与上面一致，这里再具体总结下：
 
 * __【初始化阶段】：__这个阶段首先查找到函数的zend_function，普通function就是到EG(function_table)中查找，成员方法则先从EG(class_table)中找到zend_class_entry，然后再进一步在其function_table找到zend_function，接着就是根据zend_op_array新分配__zend_execute_data__结构并设置上下文切换的指针
@@ -274,7 +274,18 @@ static zend_always_inline void zend_vm_stack_free_call_frame(zend_execute_data *
 * __【函数执行阶段】：__被调用函数内部的执行过程，首先是接收参数，然后开始执行opcode
 * __【函数返回阶段】：__被调用函数执行完毕返回过程，将返回值传递给调用方的zend_execute_data变量区，然后释放zend_execute_data以及分配的局部变量，将上下文切换到调用前，回到调用的位置继续执行
 
-函数的调用过程还是比较容易理解的，不再举例具体分析其各个过程，这里额外说下return过程，这个过程有一个重要操作就是__销毁局部变量(仅函数调用这一种情况)__，这一步操作在`zend_leave_helper_SPEC`中完成：
+接下来我们详细分析下各个阶段的处理过程。
+
+#### 3.3.3.1 初始化阶段
+
+#### 3.3.3.2 参数传递阶段
+
+#### 3.3.3.3 函数调用阶段
+
+#### 3.3.3.4 函数执行阶段
+
+#### 3.3.3.5 函数返回阶段
+这个过程有一个重要操作就是__销毁局部变量(仅函数调用这一种情况)__，这一步操作在`zend_leave_helper_SPEC`中完成：
 
 ```c
 static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL zend_leave_helper_SPEC(ZEND_OPCODE_HANDLER_ARGS)
