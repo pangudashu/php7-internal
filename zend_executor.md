@@ -266,7 +266,7 @@ static zend_always_inline void zend_vm_stack_free_call_frame(zend_execute_data *
 
 ### 3.3.3 函数的执行流程
 （这里的函数指用户自定义的PHP函数，不含内部函数）
-上一节我们介绍了zend执行引擎的几个关键步骤，函数的调用过程其实与上面一致，这里再具体总结下：
+上一节我们介绍了zend执行引擎的几个关键步骤，也简单的介绍了函数的调用过程，这里再单独总结下：
 
 * __【初始化阶段】：__这个阶段首先查找到函数的zend_function，普通function就是到EG(function_table)中查找，成员方法则先从EG(class_table)中找到zend_class_entry，然后再进一步在其function_table找到zend_function，接着就是根据zend_op_array新分配__zend_execute_data__结构并设置上下文切换的指针
 * __【参数传递阶段】：__如果函数没有参数则跳过此步骤，有的话则会将函数所需参数传递到__初始化阶段__新分配的__zend_execute_data动态变量区__
