@@ -424,7 +424,7 @@ static zend_always_inline void i_init_func_execute_data(zend_execute_data *execu
 ![](img/func_exe_start.png)
 
 #### 3.3.3.5 函数返回阶段
-这个过程有一个重要操作就是__销毁局部变量(仅函数调用这一种情况)__，这一步操作在`zend_leave_helper_SPEC`中完成：
+实际此过程可以认为是3.3.3.4的一部分，这个阶段就是函数调用结束，返回调用处的过程，这个过程中有三个关键工作：拷贝返回值、执行器切回调用位置、释放清理局部变量。
 
 ```c
 static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL zend_leave_helper_SPEC(ZEND_OPCODE_HANDLER_ARGS)
