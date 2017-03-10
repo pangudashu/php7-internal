@@ -11,14 +11,13 @@ function my_func(){
 汇编中函数对应的是一组独立的汇编指令，然后通过call指令实现函数的调用，前面已经说过PHP编译的结果是opcode数组，与汇编指令对应，PHP用户自定义函数的实现就是将函数编译为独立的opcode数组，调用时分配独立的执行栈依次执行opcode，所以自定义函数对于zend而言并没有什么特别之处，只是将opcode进行了打包封装，实际PHP脚本中函数之外的指令整个可以认为是一个函数(或者理解为main函数更直观)。
 
 ```php
-<?php
 /* function main(){ */
 
 $a = 123;
 echo $a;
 
 /* } */
-?>
+```
 
 下面具体看下PHP中函数的结构：
 
@@ -69,7 +68,7 @@ Zend引擎中定义了很多内部函数供用户在PHP中使用，比如：defi
 
 #### 3.2.2.1 内部函数结构
 上一节介绍`zend_function`为union，其中`internal_function`就是内部函数用到的，具体结构：
-```
+```c
 //zend_complie.h
 typedef struct _zend_internal_function {
     /* Common elements */
@@ -127,13 +126,11 @@ PHP_MINIT_FUNCTION(xxxxxx)
 ```
 接着编译、安装扩展，测试：
 ```php
-<?php
 qp_test();
-?>
-
-结果输出：
-call internal function 'qp_test'
 ```
+结果输出：
+`call internal function 'qp_test'`
+
 这样一个内部函数就定义完成了。这里有一个地方需要注意的我们把这个函数注册到__CG(function_table)__中去了，而不是__EG(function_table)__，这是因为在`php_request_startup`阶段会把__CG(function_table)__赋值给__EG(function_table)__。
 
 上面的过程看着比较简单，但是在实际应用中不要这样做，PHP提供给我们一套标准的定义方式，接下来看下如何在扩展中按照官方方式提供一个内部函数。
