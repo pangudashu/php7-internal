@@ -426,7 +426,35 @@ static zend_always_inline void i_init_func_execute_data(zend_execute_data *execu
 #### 3.3.3.5 函数返回阶段
 实际此过程可以认为是3.3.3.4的一部分，这个阶段就是函数调用结束，返回调用处的过程，这个过程中有三个关键工作：拷贝返回值、执行器切回调用位置、释放清理局部变量。
 
+上面例子此过程opcode为`ZEND_RETURN`，对应的handler为`ZEND_RETURN_SPEC_CV_HANDLER`：
 ```c
+static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_RETURN_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
+{
+    USE_OPLINE
+    zval *retval_ptr;
+    zend_free_op free_op1;
+
+    //获取返回值
+    retval_ptr = _get_zval_ptr_cv_undef(execute_data, opline->op1.var);
+    if (IS_CV == IS_CV && UNEXPECTED(Z_TYPE_INFO_P(retval_ptr) == IS_UNDEF)) {
+        //返回值未定义，返回NULL
+        retval_ptr = GET_OP1_UNDEF_CV(retval_ptr, BP_VAR_R);
+        if (EX(return_value)) {
+            ZVAL_NULL(EX(return_value));
+        }
+    } else if(!EX(return_value)){
+        ...
+    }else{ //返回值正常
+        ...
+
+        ZVAL_DEREF(retval_ptr); //如果retval_ptr是引用则将找到其具体引用的zval
+        ZVAL_COPY(EX(return_value), retval_ptr); //将返回值复制给调用方接收值：EX(return_value)
+        ...
+    }
+
+    ZEND_VM_TAIL_CALL(zend_leave_helper_SPEC(ZEND_OPCODE_HANDLER_ARGS_PASSTHRU));
+}
+
 static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL zend_leave_helper_SPEC(ZEND_OPCODE_HANDLER_ARGS)
 {
     zend_execute_data *old_execute_data;
@@ -440,9 +468,13 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL zend_leave_helper_SPEC(ZEND_OPCODE_
     }
     //include、eval及整个脚本的结束(main函数)走到下面
     //...
+    
+    //将执行器切回调用的位置
+    EG(current_execute_data) = EX(prev_execute_data);
 }
 
 //zend_execute.c
+//清理局部变量的过程
 static zend_always_inline void i_free_compiled_variables(zend_execute_data *execute_data)
 {
     zval *cv = EX_VAR_NUM(0);
@@ -461,8 +493,7 @@ static zend_always_inline void i_free_compiled_variables(zend_execute_data *exec
     }
 }
 ```
-这就是函数返回前清理局部变量的操作，除了函数这种情况外还有两种情况也有return操作：
-
+除了函数调用完成时有return操作，其它还有两种情况也会有此过程：
 * __1.PHP主脚本执行结束时：__也就是PHP脚本开始执行的入口脚本(PHP没有显式的main函数，这种就可以认为是main函数)，但是这种情况并不会在return时清理，因为在main函数中定义的变量并非纯碎的局面变量，它们都是全局变量，与$__GET、$__POST是一类，这些全局变量的清理是在request_shutdown阶段处理
 * __2.include、eval：__以include为例，如果include的文件中定义了全局变量，那么这些变量实际与上面1的情况一样，它们的存储位置是在一起的
 
