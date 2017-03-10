@@ -168,7 +168,7 @@ $b = &$a;                   //$a,$b -> zend_reference_1(refcount=2) -> zend_stri
 ```
 最终的结果如图：
 
-![ref](img/zend_ref.png)
+![ref](../img/zend_ref.png)
 
 注意：引用只能通过`&`产生，无法通过赋值传递，比如：
 ```php
@@ -267,7 +267,7 @@ $b[] = 3;
 ```
 最终的结果：
 
-![zval_sep](img/zval_sep.png)
+![zval_sep](../img/zval_sep.png)
 
 不是所有类型都可以copy的，比如对象、资源，实时上只有string、array两种支持，与引用计数相同，也是通过`zval.u1.type_flag`标识value是否可复制的：
 ```c
@@ -305,11 +305,11 @@ unset($a);
 ```
 `unset($a)`之前引用关系：
 
-![gc_1](img/gc_1.png)
+![gc_1](../img/gc_1.png)
 
 `unset($a)`之后：
 
-![gc_2](img/gc_2.png)
+![gc_2](../img/gc_2.png)
 
 可以看到，`unset($a)`之后由于数组中有子元素指向`$a`，所以`refcount > 0`，无法通过简单的gc机制回收，这种变量就是垃圾，垃圾回收器要处理的就是这种情况，目前垃圾只会出现在array、object两种类型中，所以只会针对这两种情况作特殊处理：当销毁一个变量时，如果发现减掉refcount后仍然大于0，且类型是IS_ARRAY、IS_OBJECT则将此value放入gc可能垃圾双向链表中，等这个链表达到一定数量后启动检查程序将所有变量检查一遍，如果确定是垃圾则销毁释放。
 
