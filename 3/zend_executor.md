@@ -443,6 +443,7 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_RETURN_SPEC_CV_HANDLER(ZEND_OP
             ZVAL_NULL(EX(return_value));
         }
     } else if(!EX(return_value)){
+        //无返回值
         ...
     }else{ //返回值正常
         ...
@@ -500,8 +501,4 @@ static zend_always_inline void i_free_compiled_variables(zend_execute_data *exec
 * __2.include、eval：__以include为例，如果include的文件中定义了全局变量，那么这些变量实际与上面1的情况一样，它们的存储位置是在一起的
 
 所以实际上面说的这两种情况属于一类，它们并不是局部变量的清理，而是__全局变量的清理__，另外局部变量的清理也并非只有return一个时机，另外还有一个更重要的时机就是变量分离时，这种情况我们在《PHP语法实现》一节再具体说明。
-
-
-
-
 
