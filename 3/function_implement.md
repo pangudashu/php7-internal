@@ -51,7 +51,7 @@ union _zend_function {
 
 经过比较发现`zend_op_array`与`zend_internal_function`结构的起始位置都有`common`中的几个成员，如果你对C的内存比较了解应该会马上想到它们的用法，实际`common`可以看作是`op_array`、`internal_function`的header，不管是什么哪种函数都可以通过`zend_function.common.xx`快速访问到`zend_function.zend_op_array.xx`及`zend_function.zend_internal_function.xx`，下面几个，`type`同理，可以直接通过`zend_function.type`取到`zend_function.op_array.type`及`zend_function.internal_function.type`。
 
-![php function](img/php_function.jpg)
+![php function](../img/php_function.jpg)
 
 函数是在编译阶段确定的，那么它们存在哪呢？
 

@@ -50,7 +50,7 @@ struct _zend_mm_free_slot {
 ```
 chunk、page、slot三者的关系：
 
-![zend_heap](img/zend_heap.png)
+![zend_heap](../img/zend_heap.png)
 
 接下来看下内存池的初始化以及三种内存分配的过程。
 
@@ -108,14 +108,14 @@ static zend_mm_heap *zend_mm_init(void)
 ```
 这里分配了主chunk，只有第一个chunk的heap会用到，后面分配的chunk不再用到heap，初始化完的结构如下图：
 
-![chunk_init](img/chunk_init.png)
+![chunk_init](../img/chunk_init.png)
 
 初始化的过程实际只是分配了一个主chunk，这里并没有看到开始提到的小内存slot切割，下一节我们来详细看下各种内存的分配过程。
 
 ### 5.1.3 内存分配
 文章开头已经简单提过Zend内存分配器按照申请内存的大小有三种不同的实现：
 
-![alloc_all](img/alloc_all.png)
+![alloc_all](../img/alloc_all.png)
 
 #### 5.1.3.1 Huge分配
 超过2M内存的申请，与通用的内存申请没有太大差别，只是将申请的内存块通过单链表进行了管理。
@@ -186,7 +186,7 @@ typedef zend_mm_bitset zend_mm_page_map[ZEND_MM_PAGE_MAP_LEN];     /* 64B */
 //5:
 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000101
 ```
-![free_map](img/free_map.png)
+![free_map](../img/free_map.png)
 
 接下来看下`zend_mm_alloc_pages`的操作：
 ```c
@@ -247,7 +247,7 @@ __最优page的检索过程__：
 
 下面从一个例子具体看下，以64bit整形为例，假如当前page分配情况如下图-(1)(group1全部已分配;group2中page 67-68、71-74未分配，其余都已分配;group3中除page 128-129、133已分配外其余都未分配)，现在要申请3个page：
 
-![free_map_1](img/free_map_1.png)
+![free_map_1](../img/free_map_1.png)
 
 检索过程：
 * a.首先会直接跳过group1，直接到group2检索
@@ -302,7 +302,7 @@ small内存的分配过程：
 * __step2:__如果申请内存大小对应的的slot链表不为空则直接返回free_slot[bin_num]，然后将free_slot[bin_num]指向下一个空闲位置free_slot[bin_num]->next_free_slot
 * __step3:__释放内存时先将此内存的next_free_slot指向free_slot[bin_num]，然后将free_slot[bin_num]指向释放的内存，也就是将释放的内存插到链表头部
 
-![free_slot](img/free_slot.png)
+![free_slot](../img/free_slot.png)
 
 ### 5.1.4 系统内存分配
 上面介绍了三种内存分配的过程，内存池实际只是在系统内存上面做了一些工作，尽可能减少系统内存的分配次数，接下来简单看下系统内存的分配。

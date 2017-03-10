@@ -1,7 +1,7 @@
 ## 3.3 Zend引擎执行过程
 Zend引擎主要包含两个核心部分：编译、执行：
 
-![zend_vm](img/zend_vm.png)
+![zend_vm](../img/zend_vm.png)
 
 前面分析了Zend的编译过程以及PHP用户函数的实现，接下来分析下Zend引擎的执行过程。
 
@@ -29,7 +29,7 @@ struct _zend_op {
 #### 3.3.1.2 zend_op_array
 `zend_op_array`是Zend引擎执行阶段的输入，整个执行阶段的操作都是围绕着这个结构，关于其具体结构前面我们已经讲过了。
 
-![zend_op_array](img/zend_op_array.png)
+![zend_op_array](../img/zend_op_array.png)
 
 这里再重复说下zend_op_array几个核心组成部分：
 * __opcode指令__：即PHP代码具体对应的处理动作，与二进制程序中的代码段对应
@@ -50,7 +50,7 @@ ZEND_API zend_executor_globals executor_globals;
 ```
 `zend_executor_globals`结构非常大，定义在`zend_globals.h`中，比较重要的几个字段含义如下图所示：
 
-![EG](img/EG.png)
+![EG](../img/EG.png)
 
 #### 3.3.1.4 zend_execute_data
 `zend_execute_data`是执行过程中最核心的一个结构，每次函数的调用、include/require、eval等都会生成一个新的结构，它表示当前的作用域、代码的执行位置以及局部变量的分配等等，等同于机器码执行过程中stack的角色，后面分析具体执行流程的时候会详细分析其作用。
@@ -78,7 +78,7 @@ struct _zend_execute_data {
 ```
 zend_execute_data与zend_op_array的关联关系：
 
-![zend_ex_op](img/zend_ex_op.png)
+![zend_ex_op](../img/zend_ex_op.png)
 
 ### 3.3.2 执行流程
 Zend的executor与linux二进制程序执行的过程是非常类似的，在C程序执行时有两个寄存器ebp、esp分别指向当前作用栈的栈顶、栈底，局部变量全部分配在当前栈，函数调用、返回通过`call`、`ret`指令完成，调用时`call`将当前执行位置压入栈中，返回时`ret`将之前执行位置出栈，跳回旧的位置继续执行，在Zend VM中`zend_execute_data`就扮演了这两个角色，`zend_execute_data.prev_execute_data`保存的是调用方的信息，实现了`call/ret`，`zend_execute_data`后面会分配额外的内存空间用于局部变量的存储，实现了`ebp/esp`的作用。
@@ -94,7 +94,7 @@ __Zend执行opcode的简略过程：__
     * __step3.3:__ 类方法的调用与函数基本相同，后面分析对象实现的时候再详细分析
 * __step4:__ 全部opcode执行完成后将step1分配的内存释放，这个过程会将所有的局部变量"销毁"，执行阶段结束
 
-![zend_execute](img/zend_execute_data.png)
+![zend_execute](../img/zend_execute_data.png)
 
 接下来详细看下整个流程。
 
@@ -166,7 +166,7 @@ static zend_always_inline uint32_t zend_vm_calc_used_stack(uint32_t num_args, ze
 
 最终分配的内存空间如下图：
 
-![var_T](img/var_T.png)
+![var_T](../img/var_T.png)
 
 这里实际分配内存时并不是直接`malloc`的，还记得上面EG结构中有个`vm_stack`吗？实际内存是从这里获取的，每次从`EG(vm_stack_top)`处开始分配，分配完再将此指针指向`EG(vm_stack_top) + used_stack`，这里不再对vm_stack作更多分析，更下层实际就是Zend的内存池(zend_alloc.c)，后面也会单独分析。
 
@@ -287,7 +287,7 @@ my_function($a, $b);
 ```
 主脚本、my_function的opcode为：
 
-![](img/func_exe_eg1.png)
+![](../img/func_exe_eg1.png)
 
 #### 3.3.3.1 初始化阶段
 此阶段的主要工作有两个：查找函数zend_function、分配zend_execute_data。
@@ -327,7 +327,7 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INIT_FCALL_SPEC_CONST_HANDLER(
 ```
 当前zend_execute_data及新生成的zend_execute_data关系：
 
-![zend_exe_init](img/func_exe_init.png)
+![zend_exe_init](../img/func_exe_init.png)
 
 注意__This__这个值，它并不仅仅指的是面向对象中那个this，此外它还记录着其它两个信息：
 * __call_info：__调用信息，通过__This.u1.reserved__记录，因为我们的主脚本、用户自定义函数调用、内核函数调用、include/require/eval等都会生成一个zend_execute_data，这个值就是用来区分这些不同类型的，对应的具体值为：ZEND_CALL_TOP_CODE、ZEND_CALL_NESTED_FUNCTION、ZEND_CALL_TOP_FUNCTION、ZEND_CALL_NESTED_CODE，这个信息是在分配zend_execute_data时显式声明的
@@ -338,7 +338,7 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INIT_FCALL_SPEC_CONST_HANDLER(
 
 另外这里的"复制"并不是硬拷贝，而是传递的value指针(当然bool/int/double类型不需要)，通过引用计数管理，当在被调函数内部改写参数的值时将重新拷贝一份，与普通的变量用法相同。
 
-![func_exe_send_var](img/func_exe_send_var.png)
+![func_exe_send_var](../img/func_exe_send_var.png)
 
 图中画的只是上面示例那种情况，比如`my_function(array());`直接传值则会是__literals区->新zend_execute_data动态变量区__的传递。
 
@@ -416,12 +416,12 @@ static zend_always_inline void i_init_func_execute_data(zend_execute_data *execu
 }
 ```
 
-![func_call](img/func_exe_call.png)
+![func_call](../img/func_exe_call.png)
 
 #### 3.3.3.4 函数执行阶段
 这个过程就是函数内部opcode的执行流程，没什么特别的，唯一的不同就是前面会接收未传的参数，如下图所示。
 
-![](img/func_exe_start.png)
+![](../img/func_exe_start.png)
 
 #### 3.3.3.5 函数返回阶段
 实际此过程可以认为是3.3.3.4的一部分，这个阶段就是函数调用结束，返回调用处的过程，这个过程中有三个关键工作：拷贝返回值、执行器切回调用位置、释放清理局部变量。

@@ -111,13 +111,13 @@ class User extends Human
 ```
 其对应的zend_class_entry存储结构如下图。
 
-![zend_class](img/zend_class.png)
+![zend_class](../img/zend_class.png)
 
 开始的时候已经提到，类是编译阶段的产物，编译完成后我们定义的每个类都会生成一个zend_class_entry，它保存着类的全部信息，在执行阶段所有类相关的操作都是用的这个结构。
 
 所有PHP脚本中定义的类以及内核、扩展中定义的内部类通过一个以"类名"作为索引的哈希表存储，这个哈希表保存在Zend引擎global变量中：__zend_executor_globals.class_table__(即：__EG(class_table)__)，与function的存储相同，关于这个global变量前面[《3.3.1.3 zend_executor_globals》](zend_executor.md#3313-zend_executor_globals)已经讲过。
 
-![zend_eg_class](img/zend_eg_class.png)
+![zend_eg_class](../img/zend_eg_class.png)
 
 在接下来的小节中我们将对类的常量、成员属性、成员方法的实现具体分析。
 
@@ -180,7 +180,7 @@ class my_class {
 ```
 与常量的存储方式不同，成员属性的__初始化值__并不是__直接__用以"属性名"作为索引的哈希表存储的，而是通过数组保存的，普通属性、静态属性各有一个数组分别存储。
 
-![zend_class_property](img/zend_class_property.png)
+![zend_class_property](../img/zend_class_property.png)
 
 看到这里可能有个疑问：使用时成员属性是如果找到的呢？
 
@@ -219,7 +219,7 @@ class my_class {
 ```
 则__default_properties_table__、__default_static_properties_table__、__properties_info__关系图：
 
-![zend_property_info](img/zend_property_info.png)
+![zend_property_info](../img/zend_property_info.png)
 
 下面我们再看下普通成员属性与静态成员属性的不同：__静态成员变量保存在类中，各对象共享同一份数据，而普通属性属于对象，各对象独享。__
 
@@ -228,7 +228,7 @@ class my_class {
 #### 3.4.1.4 成员方法
 每个类可以定义若干属于本类的函数(称之为成员方法)，这种函数与普通的function相同，只是以类的维度进行管理，不是全局性的，所以成员方法保存在类中而不是EG(function_table)。
 
-![zend_class_function](img/zend_class_function.png)
+![zend_class_function](../img/zend_class_function.png)
 
 成员方法也有静态、非静态之分，静态方法中不能使用$this，因为其操作的作用域全部都是类的而不是对象的，而非静态方法中可以通过$this访问属于本对象的成员属性。
 
