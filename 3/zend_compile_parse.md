@@ -91,4 +91,36 @@ again:
     return retval;
 }
 ```
+这里两个关键点需要注意：
+__(1) token值__：词法解析器解析到的token值内容就是token值，这些值统一通过__zval__存储，上面的过程中可以看到调用lex_scan参数是是个zval*，在具体的命中规则总会将解析到的token保存到这个值，从而传递给语法解析器使用，比如PHP中的解析变量的规则：`$a;`，其词法解析规则为：
+```c
+<ST_IN_SCRIPTING,ST_DOUBLE_QUOTES,ST_HEREDOC,ST_BACKQUOTE,ST_VAR_OFFSET>"$"{LABEL} {
+    //将匹配到的token值保存在zval中
+    zend_copy_value(zendlval, (yytext+1), (yyleng-1)); //只保存{LABEL}内容，不包括$，所以是yytext+1
+    RETURN_TOKEN(T_VARIABLE);
+}
+```
+zendlval就是我们传入的zval*，yytext指向命中的token值起始位置，yyleng为token值的长度。
+
+__(2) 语义值类型__：bison调用re2c分割token有两个含义，第一个是token类型，另一个是token值，token类型一般以yylex的返回值告诉bison，而token值就是语义值，这个值一般定义为固定的类型，这个类型就是语义值类型，默认为int，可以通过__YYSTYPE__定义，而PHP中这个类型是__zend_parser_stack_elem__，这就是为什么zendlex的参数为zend_parser_stack_elem的原因。
+```c
+#define YYSTYPE zend_parser_stack_elem
+
+typedef union _zend_parser_stack_elem {
+    zend_ast *ast;
+    zend_string *str;
+    zend_ulong num;
+} zend_parser_stack_elem;
+```
+实际这是个union，ast类型用的比较多(其它两种类型暂时没发现有地方在用)，这样可以通过%token、%type将对应的值修改为elem.ast，所以在zend_language_parser.y中使用的$$、$1、$2......多数都是__zend_parser_stack_elem.ast__：
+```c
+%token <ast> T_LNUMBER   "integer number (T_LNUMBER)"
+%token <ast> T_DNUMBER   "floating-point number (T_DNUMBER)"
+%token <ast> T_STRING    "identifier (T_STRING)"
+%token <ast> T_VARIABLE  "variable (T_VARIABLE)"
+
+%type <ast> top_statement namespace_name name statement function_declaration_statement
+%type <ast> class_declaration_statement trait_declaration_statement
+%type <ast> interface_declaration_statement interface_extends_list
+```
 
