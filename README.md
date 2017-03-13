@@ -13,6 +13,7 @@
    * 2.3 常量(2/var_common.md)
 * 第3章 Zend虚拟机
    * [3.1 PHP代码的编译](3/zend_compile.md)
+      * [3.1.1 词法解析、语法解析](3/zend_compile_parse.md)
    * [3.2 函数实现](3/function_implement.md)
       * [3.2.1 内部函数](3/function_implement.md)
       * <a href="3/function_implement.md#用户自定义函数的实现">3.2.2 用户函数的实现</a>

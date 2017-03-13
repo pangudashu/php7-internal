@@ -49,23 +49,6 @@ int main(int argc, char **argv)
     return 0;
 }
 ```
-```
-$ re2c -o example.cc 01_recognizing_integers.re
-$ g++ -o example example.cc
-$ ./example 0 12345678901234567890 0xAbcDEf 0x00 007 0B0 0b110101010 0x 0b ? ""
-oct: 0
-dec: 12345678901234567890
-hex: 0xAbcDEf
-hex: 0x00
-oct: 007
-bin: 0B0
-bin: 0b110101010
-err: 0x
-err: 0b
-err: ?
-err:
-```
-
 ### 3.1.2 编译过程
 PHP编译阶段的基本过程如下图：
 
