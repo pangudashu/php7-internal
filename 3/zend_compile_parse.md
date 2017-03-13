@@ -52,4 +52,43 @@ expr:
 
 这里不再对re2c、bison作更多解释，想要了解更多的推荐看下《flex与bison》这本书，接下来我们看下PHP具体的解析过程。
 
+PHP编译阶段流程：
+
+![zend_compile_process](../img/zend_compile_process.png)
+
+其中__zendparse()__就是词法、语法解析过程，这个函数实际就是bison中提供的语法解析函数__yyparse()__：
+```c
+#define yyparse         zendparse
+```
+__yyparse()__不断调用__yylex()__得到token，然后根据token匹配语法规则：
+
+![](../img/zend_parse_2.png)
+
+```c
+#define yylex           zendlex
+
+//zend_compile.c
+int zendlex(zend_parser_stack_elem *elem)
+{
+    zval zv;
+    int retval;
+    ...
+
+again:
+    ZVAL_UNDEF(&zv);
+    retval = lex_scan(&zv);
+    if (EG(exception)) {
+        //语法错误
+        return T_ERROR;
+    }
+    ...
+
+    if (Z_TYPE(zv) != IS_UNDEF) {
+        //如果在分割token中有zval生成则将其值复制到zend_ast_zval结构中
+        elem->ast = zend_ast_create_zval(&zv);
+    }
+
+    return retval;
+}
+```
 
