@@ -50,9 +50,7 @@ expr:
 
 ![](../img/zend_parse_1.png)
 
-这里不再对re2c、bison作更多解释，想要了解更多的推荐看下《flex与bison》这本书，接下来我们看下PHP具体的解析过程。
-
-PHP编译阶段流程：
+接下来我们看下PHP具体的解析过程，PHP编译阶段流程：
 
 ![zend_compile_process](../img/zend_compile_process.png)
 
@@ -92,6 +90,7 @@ again:
 }
 ```
 这里两个关键点需要注意：
+
 __(1) token值__：词法解析器解析到的token值内容就是token值，这些值统一通过__zval__存储，上面的过程中可以看到调用lex_scan参数是是个zval*，在具体的命中规则总会将解析到的token保存到这个值，从而传递给语法解析器使用，比如PHP中的解析变量的规则：`$a;`，其词法解析规则为：
 ```c
 <ST_IN_SCRIPTING,ST_DOUBLE_QUOTES,ST_HEREDOC,ST_BACKQUOTE,ST_VAR_OFFSET>"$"{LABEL} {
@@ -107,7 +106,7 @@ __(2) 语义值类型__：bison调用re2c分割token有两个含义，第一个�
 #define YYSTYPE zend_parser_stack_elem
 
 typedef union _zend_parser_stack_elem {
-    zend_ast *ast;
+    zend_ast *ast; //抽象语法树主要结构
     zend_string *str;
     zend_ulong num;
 } zend_parser_stack_elem;
@@ -124,3 +123,70 @@ typedef union _zend_parser_stack_elem {
 %type <ast> interface_declaration_statement interface_extends_list
 ```
 
+语法解析器从start开始调用，然后层层匹配各个规则，语法解析器根据命中的语法规则创建AST节点，最后将生成的AST根节点赋到__CG(ast)__：
+```c
+%% /* Rules */
+
+start:
+    top_statement_list  { CG(ast) = $1; }
+;
+
+top_statement_list:
+    top_statement_list top_statement { $$ = zend_ast_list_add($1, $2); }
+    |   /* empty */ { $$ = zend_ast_create_list(0, ZEND_AST_STMT_LIST); }
+;
+```
+首先会创建一个根节点list，然后将后面不断命中top_statement生成的ast加到这个list中，zend_ast具体结构：
+
+```c
+enum _zend_ast_kind {
+    ZEND_AST_ZVAL = 1 << ZEND_AST_SPECIAL_SHIFT,
+    ZEND_AST_ZNODE,
+
+    /* list nodes */
+    ZEND_AST_ARG_LIST = 1 << ZEND_AST_IS_LIST_SHIFT,
+    ...
+};
+
+struct _zend_ast {
+    zend_ast_kind kind; /* Type of the node (ZEND_AST_* enum constant) */
+    zend_ast_attr attr; /* Additional attribute, use depending on node type */
+    uint32_t lineno;    /* Line number */
+    zend_ast *child[1]; /* Array of children (using struct hack) */
+};
+
+typedef struct _zend_ast_list {
+    zend_ast_kind kind;
+    zend_ast_attr attr;
+    uint32_t lineno;
+    uint32_t children;
+    zend_ast *child[1];
+} zend_ast_list;
+```
+根节点实际为zend_ast_list，每条语句对应的ast保存在child中，使用中zend_ast_list、zend_ast可以相互转化，kind标识的是ast节点类型，后面会根据这个值生成具体的opcode，另外函数、类还会用到另外一种ast节点结构：
+```c
+typedef struct _zend_ast_decl {
+    zend_ast_kind kind;
+    zend_ast_attr attr; /* Unused - for structure compatibility */
+    uint32_t start_lineno; //开始行号
+    uint32_t end_lineno;   //结束行号
+    uint32_t flags;
+    unsigned char *lex_pos;
+    zend_string *doc_comment;
+    zend_string *name;
+    zend_ast *child[4]; //类中会将继承的父类、实现的接口以及类中的语句解析保存在child中
+} zend_ast_decl;
+```
+这么看比较难理解，接下来我们从一个简单的例子看下最终生成的语法树。
+
+```php
+$a = 123;
+$b = "hi~";
+
+echo $a,$b;
+```
+具体解析过程这里不再解释，有兴趣的可以翻下zend_language_parse.y中，这个过程不太容易理解，需要多领悟几遍，最后生成的ast如下图：
+
+![zend_ast](../img/zend_ast.png)
+
+这里不再对re2c、bison作更多解释，想要了解更多的推荐看下《flex与bison》这本书。
