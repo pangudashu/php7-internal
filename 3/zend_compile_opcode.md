@@ -4,11 +4,9 @@
 
 语法解析过程的产物保存于CG(AST)，接着zend引擎会把AST进一步编译为__zend_op_array__，它是编译阶段最终的产物，也是执行阶段的输入，后面我们介绍的东西基本都是围绕zend_op_array展开的，AST解析过程确定了当前脚本定义了哪些变量，并为这些变量__顺序编号__，这些值在使用时都是按照这个编号获取的，另外也将变量的初始化值、调用的函数/类/常量名称等值(称之为字面量)保存到zend_op_array.literals中，这些字面量也有一个唯一的编号，所以执行的过程实际就是根据各指令调用不同的C函数，然后根据变量、字面量、临时变量的编号对这些值进行处理加工。
 
-
+我们首先看下zend_op_array的结构，明确几个关键信息，然后再看下ast编译为zend_op_array的过程。
 #### 3.1.2.1 zend_op_array数据结构
 PHP主脚本会生成一个zend_op_array，每个function也会编译为独立的zend_op_array，所以从二进制程序的角度看zend_op_array包含着当前作用域下的所有堆栈信息，函数调用实际就是不同zend_op_array间的切换。
-
-我们首先看下zend_op_array的结构，明确几个关键信息，然后再看下ast编译为zend_op_array的过程。
 
 ![zend_compile](../img/zend_compile.png)
 
@@ -447,7 +445,7 @@ void zend_compile_assign(znode *result, zend_ast *ast)
         case ZEND_AST_VAR:
         case ZEND_AST_STATIC_PROP:
             offset = zend_delayed_compile_begin();
-            zend_delayed_compile_var(&var_node, var_ast, BP_VAR_W); //生成变量名的znode
+            zend_delayed_compile_var(&var_node, var_ast, BP_VAR_W); //生成变量名的znode，这个结构只在这个地方临时用，所以直接分配在stack上
             zend_compile_expr(&expr_node, expr_ast); //递归编译变量值表达式，最终需要得到一个ZEND_AST_ZVAL的节点
             zend_delayed_compile_end(offset);
             zend_emit_op(result, ZEND_ASSIGN, &var_node, &expr_node); //生成一条op
@@ -458,31 +456,39 @@ void zend_compile_assign(znode *result, zend_ast *ast)
 ```
 这个地方主要有三步关键操作：
 
-__第1步：__变量赋值操作有两部分：变量名、变量值，所以首先是针对变量名的操作。
+__第1步：__变量赋值操作有两部分：变量名、变量值，所以首先是针对变量名的操作，介绍zend_op_array时曾提到每个PHP变量都有一个编号，变量的读写都是根据这个编号操作的，这个编号最早就是这一步生成的。
+
+![](../img/zend_lookup_cv.png)
+
+中间过程我们不再细看，这里重点看下变量编号的过程，这个过程比较简单，每发现一个变量就遍历zend_op_array.vars数组，看此变量是否已经保存，没有保存的话则存入vars，然后后续变量的使用都是用的这个变量在数组中的下标，比如第一次定义的时候：`$a = 123；`将$a编号为0，然后：`echo $a;`再次使用时会遍历vars，直接用0操作$a。
 ```c
-void zend_delayed_compile_var(znode *result, zend_ast *ast, uint32_t type)
+static int lookup_cv(zend_op_array *op_array, zend_string* name)
 {
-    zend_op *opline;
-    switch (ast->kind) {
-        case ZEND_AST_VAR:
-            zend_compile_simple_var(result, ast, type, 1);
-            return;
-        ...
-        default:
-            zend_compile_var(result, ast, type);
-            return;
+    int i = 0;
+    zend_ulong hash_value = zend_string_hash_val(name);
+
+    //遍历op_array.vars检查此变量是否已存在
+    while (i < op_array->last_var) {
+        if (ZSTR_VAL(op_array->vars[i]) == ZSTR_VAL(name) ||
+                (ZSTR_H(op_array->vars[i]) == hash_value &&
+                 ZSTR_LEN(op_array->vars[i]) == ZSTR_LEN(name) &&
+                 memcmp(ZSTR_VAL(op_array->vars[i]), ZSTR_VAL(name), ZSTR_LEN(name)) == 0)) {
+            zend_string_release(name);
+            return (int)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, i);
+        }
+        i++;
     }
-}
-
-static void zend_compile_simple_var(znode *result, zend_ast *ast, uint32_t type, int delayed) /* {{{ */
-{
-    if (zend_try_compile_cv(result, ast) == FAILURE) {
-        zend_op *opline = zend_compile_simple_var_no_cv(result, ast, type, delayed);
-        zend_adjust_for_fetch_type(opline, type);
+    //这是一个新变量
+    i = op_array->last_var;
+    op_array->last_var++;
+    if (op_array->last_var > CG(context).vars_size) {
+        CG(context).vars_size += 16; /* FIXME */
+        op_array->vars = erealloc(op_array->vars, CG(context).vars_size * sizeof(zend_string*));
     }
+
+    op_array->vars[i] = zend_new_interned_string(name);
+    return (int)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, i); //传NULL时返回的就是i
 }
-
-
 ```
 
 
