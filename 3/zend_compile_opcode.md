@@ -507,7 +507,7 @@ void zend_compile_expr(znode *result, zend_ast *ast)
 ```
 __第3步：__上面两步已经分别生成了变量赋值的op1、op2，下面就是根据这俩值生成opcode的过程。
 ```c
-tatic zend_op *zend_emit_op(znode *result, zend_uchar opcode, znode *op1, znode *op2) /* {{{ */
+tatic zend_op *zend_emit_op(znode *result, zend_uchar opcode, znode *op1, znode *op2)
 {
     zend_op *opline = get_next_op(CG(active_op_array)); //当前zend_op_array下生成一条新的指令
     opline->opcode = opcode;
@@ -542,4 +542,4 @@ static inline void zend_make_var_result(znode *result, zend_op *opline)
 ```
 到这我们示例中的第1条赋值语句就算编译完了，第2条同样是赋值，过程与上面相同，我们直接看最好一条输出的语句。
 
-__(3)__echo语句的编译。
+__(3)、__ echo语句的编译。
