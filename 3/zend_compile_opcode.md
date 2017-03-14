@@ -86,7 +86,30 @@ void zend_compile_top_stmt(zend_ast *ast)
 ```
 首先从AST的根节点开始编译，根节点类型为ZEND_AST_STMT_LIST，这个类型表示当前节点下有多个独立的节点，各child都是独立的语句生成的节点，所以依次编译即可，直到到达有效节点位置(非ZEND_AST_STMT_LIST节点)，然后调用`zend_compile_stmt`编译当前节点：
 ```c
+void zend_compile_stmt(zend_ast *ast)
+{
+    CG(zend_lineno) = ast->lineno;
 
+    switch (ast->kind) {
+        case xxx:
+            ...
+                break;
+        case ZEND_AST_ECHO:
+            zend_compile_echo(ast);
+            break;
+        ...
+        default:
+        {
+            znode result;
+            zend_compile_expr(&result, ast);
+            zend_do_free(&result);
+        }
+    }
+    
+    if (FC(declarables).ticks && !zend_is_unticked_stmt(ast)) {
+        zend_emit_tick();
+    }
+}
 ```
 主要根据不同的节点类型(kind)作不同的处理，我们不会把每种类型的处理都讲一遍，这里还是根据上一节最后的例子挑几个看下具体的处理过程。
 ```php
@@ -99,4 +122,56 @@ zendparse()阶段生成的AST：
 
 ![zend_ast](../img/zend_ast.png)
 
+(1)首先从根节点开始，有3个child，第一个节点类型为ZEND_AST_ASSIGN，zend_compile_stmt()中走到default分支
 
+(2)ZEND_AST_ASSIGN类型由zend_compile_expr()处理：
+```c
+void zend_compile_expr(znode *result, zend_ast *ast)
+{
+    CG(zend_lineno) = zend_ast_get_lineno(ast);
+    switch (ast->kind) {
+        case ZEND_AST_ZVAL:
+            ZVAL_COPY(&result->u.constant, zend_ast_get_zval(ast));
+            result->op_type = IS_CONST;
+            return;
+        case ZEND_AST_VAR:
+            zend_compile_var(result, ast, BP_VAR_R);
+            return;
+        case ZEND_AST_ASSIGN:
+            zend_compile_assign(result, ast);
+            return;
+        ...
+    }
+}
+```
+继续进入zend_compile_assign()：
+```c
+void zend_compile_assign(znode *result, zend_ast *ast)
+{
+    zend_ast *var_ast = ast->child[0]; //变量名
+    zend_ast *expr_ast = ast->child[1];//变量值表达式
+
+    znode var_node, expr_node;
+    zend_op *opline;
+    uint32_t offset;
+
+    if (is_this_fetch(var_ast)) { //检查变量名是否为this，变量名不能是this
+        zend_error_noreturn(E_COMPILE_ERROR, "Cannot re-assign $this");
+    }
+
+    //比如这样写：my_function() = 123;即：将函数的返回值作为变量名将报错
+    zend_ensure_writable_variable(var_ast);
+
+    switch (var_ast->kind) {
+        case ZEND_AST_VAR:
+        case ZEND_AST_STATIC_PROP:
+            offset = zend_delayed_compile_begin();
+            zend_delayed_compile_var(&var_node, var_ast, BP_VAR_W);
+            zend_compile_expr(&expr_node, expr_ast);
+            zend_delayed_compile_end(offset);
+            zend_emit_op(result, ZEND_ASSIGN, &var_node, &expr_node);
+            return;
+        ...
+    }
+}
+```
