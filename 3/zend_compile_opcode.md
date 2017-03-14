@@ -403,9 +403,9 @@ zendparse()阶段生成的AST：
 
 下面的过程比较复杂，有的函数会多次递归调用，我们根据例子一步步去看下，如果你对PHP各个语法实现比较熟悉再去看整个AST的编译过程就会比较轻松。
 
-__(1)__首先从根节点开始，有3个child，第一个节点类型为ZEND_AST_ASSIGN，zend_compile_stmt()中走到default分支
+__(1)、__ 首先从根节点开始，有3个child，第一个节点类型为ZEND_AST_ASSIGN，zend_compile_stmt()中走到default分支
 
-__(2)__ZEND_AST_ASSIGN类型由zend_compile_expr()处理：
+__(2)、__ ZEND_AST_ASSIGN类型由zend_compile_expr()处理：
 ```c
 void zend_compile_expr(znode *result, zend_ast *ast)
 {
@@ -458,7 +458,7 @@ void zend_compile_assign(znode *result, zend_ast *ast)
 ```
 这个地方主要有三步关键操作：
 
-__第1步：__变量赋值操作有两部分：变量名、变量值，所以首先是针对变量名的操作，介绍zend_op_array时曾提到每个PHP变量都有一个编号，变量的读写都是根据这个编号操作的，这个编号最早就是这一步生成的。
+__第1步：__ 变量赋值操作有两部分：变量名、变量值，所以首先是针对变量名的操作，介绍zend_op_array时曾提到每个PHP变量都有一个编号，变量的读写都是根据这个编号操作的，这个编号最早就是这一步生成的。
 
 ![](../img/zend_lookup_cv.png)
 
@@ -492,7 +492,7 @@ static int lookup_cv(zend_op_array *op_array, zend_string* name)
     return (int)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, i); //传NULL时返回的就是i
 }
 ```
-__第2步：__编译变量值表达式，再次调用zend_compile_expr()编译，示例中的情况比较简单，expr_ast.kind为ZEND_AST_ZVAL：
+__第2步：__ 编译变量值表达式，再次调用zend_compile_expr()编译，示例中的情况比较简单，expr_ast.kind为ZEND_AST_ZVAL：
 ```c
 void zend_compile_expr(znode *result, zend_ast *ast)
 {
@@ -505,7 +505,7 @@ void zend_compile_expr(znode *result, zend_ast *ast)
     }
 }
 ```
-__第3步：__上面两步已经分别生成了变量赋值的op1、op2，下面就是根据这俩值生成opcode的过程。
+__第3步：__ 上面两步已经分别生成了变量赋值的op1、op2，下面就是根据这俩值生成opcode的过程。
 ```c
 tatic zend_op *zend_emit_op(znode *result, zend_uchar opcode, znode *op1, znode *op2)
 {
