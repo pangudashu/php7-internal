@@ -51,8 +51,8 @@ struct _zval_struct {
 };
 ```
 `zval`结构比较简单，内嵌一个union类型的`zend_value`保存具体变量类型的值或指针，`zval`中还有两个union：`u1`、`u2`:
-* __u1：__它的意义比较直观，变量的类型就通过`u1.type`区分，另外一个值`type_flags`为类型掩码，在变量的内存管理、gc机制中会用到，第三部分会详细分析，至于后面两个`const_flags`、`reserved`暂且不管
-* __u2：__这个值纯粹是个辅助值，假如`zval`只有:`value`、`u1`两个值，整个zval的大小也会对齐到16byte，既然不管有没有u2大小都是16byte，把多余的4byte拿出来用于一些特殊用途还是很划算的，比如next在哈希表解决哈希冲突时会用到，还有fe_pos在foreach会用到......
+* __u1：__ 它的意义比较直观，变量的类型就通过`u1.type`区分，另外一个值`type_flags`为类型掩码，在变量的内存管理、gc机制中会用到，第三部分会详细分析，至于后面两个`const_flags`、`reserved`暂且不管
+* __u2：__ 这个值纯粹是个辅助值，假如`zval`只有:`value`、`u1`两个值，整个zval的大小也会对齐到16byte，既然不管有没有u2大小都是16byte，把多余的4byte拿出来用于一些特殊用途还是很划算的，比如next在哈希表解决哈希冲突时会用到，还有fe_pos在foreach会用到......
 
 从`zend_value`可以看出，除`long`、`double`类型直接存储值外，其它类型都为指针，指向各自的结构。
 
@@ -98,10 +98,10 @@ struct _zend_string {
     char              val[1];
 };
 ```
-* __gc：__变量引用信息，比如当前value的引用数，所有用到引用计数的变量类型都会有这个结构，3.1节会详细分析
+* __gc：__ 变量引用信息，比如当前value的引用数，所有用到引用计数的变量类型都会有这个结构，3.1节会详细分析
 * __h：__哈希值，数组中计算索引时会用到
-* __len：__字符串长度，通过这个值保证二进制安全
-* __val：__字符串内容，变长struct，分配时按len长度申请内存
+* __len：__ 字符串长度，通过这个值保证二进制安全
+* __val：__ 字符串内容，变长struct，分配时按len长度申请内存
 
 事实上字符串又可具体分为几类：IS_STR_PERSISTENT(通过malloc分配的)、IS_STR_INTERNED(php代码里写的一些字面量，比如函数名、变量值)、IS_STR_PERMANENT(永久值，生命周期大于request)、IS_STR_CONSTANT(常量)、IS_STR_CONSTANT_UNQUALIFIED，这个信息通过flag保存：zval.value->gc.u.flags，后面用到的时候再具体分析。
 
@@ -183,14 +183,14 @@ $a = "time:" . time();      //$a       -> zend_string_1(refcount=1)
 $b = &$a;                   //$a,$b    -> zend_reference_1(refcount=2) -> zend_string_1(refcount=1)
 $c = &$b;/*或$c = &$a*/     //$a,$b,$c -> zend_reference_1(refcount=3) -> zend_string_1(refcount=1) 
 ```
-这个也表示PHP中的__引用只可能有一层__，__不会出现一个引用指向另外一个引用的情况__，也就是没有C语言中`指针的指针`的概念。
+这个也表示PHP中的 __引用只可能有一层__ ，__不会出现一个引用指向另外一个引用的情况__ ，也就是没有C语言中`指针的指针`的概念。
 
 ### 2.1.3 内存管理
 接下来分析下变量的分配、销毁。
 
 在分析变量内存管理之前我们先自己想一下可能的实现方案，最简单的处理方式：定义变量时alloc一个zval及对应的value结构(ref/arr/str/res...)，赋值、函数传参时硬拷贝一个副本，这样各变量最终的值完全都是独立的，不会出现多个变量同时共用一个value的情况，在执行完以后直接将各变量及value结构free掉。
 
-这种方式是可行的，而且内存管理也很简单，但是，硬拷贝带来的一个问题是效率低，比如我们定义了一个变量然后赋值给另外一个变量，可能后面都只是只读操作，假如硬拷贝的话就会有多余的一份数据，这个问题的解决方案是：__引用计数+写时复制__。PHP变量的管理正是基于这两点实现的。
+这种方式是可行的，而且内存管理也很简单，但是，硬拷贝带来的一个问题是效率低，比如我们定义了一个变量然后赋值给另外一个变量，可能后面都只是只读操作，假如硬拷贝的话就会有多余的一份数据，这个问题的解决方案是： __引用计数+写时复制__ 。PHP变量的管理正是基于这两点实现的。
 
 #### 2.1.3.1 引用计数
 引用计数是指在value中增加一个字段`refcount`记录指向当前value的数量，变量复制、函数传参时并不直接硬拷贝一份value数据，而是将`refcount++`，变量销毁时将`refcount--`，等到`refcount`减为0时表示已经没有变量引用这个value，将它销毁即可。
@@ -232,7 +232,7 @@ $a,$b -> zend_string_1(refcount=0,val="hi~")
 
 事实上并不是所有的PHP变量都会用到引用计数，标量：true/false/double/long/null是硬拷贝自然不需要这种机制，但是除了这几个还有两个特殊的类型也不会用到：interned string(内部字符串，就是上面提到的字符串flag：IS_STR_INTERNED)、immutable array，它们的type是`IS_STRING`、`IS_ARRAY`，与普通string、array类型相同，那怎么区分一个value是否支持引用计数呢？还记得`zval.u1`中那个类型掩码`type_flag`吗？正是通过这个字段标识的，这个字段除了标识value是否支持引用计数外还有其它几个标识位，按位分割，注意：`type_flag`与`zval.value->gc.u.flag`不是一个值。
 
-支持引用计数的value类型其`zval.u1.type_flag`__包含__(注意是&，不是等于)`IS_TYPE_REFCOUNTED`：
+支持引用计数的value类型其`zval.u1.type_flag` __包含__ (注意是&，不是等于)`IS_TYPE_REFCOUNTED`：
 ```c
 #define IS_TYPE_REFCOUNTED          (1<<2)
 ```
@@ -250,9 +250,9 @@ $a,$b -> zend_string_1(refcount=0,val="hi~")
 |reference       |      Y     |
 ```
 simple types很显然用不到，不再解释，string、array、object、resource、reference有引用计数机制也很容易理解，下面具体解释下另外两个特殊的类型：
-* __interned string：__内部字符串，这是种什么类型？我们在PHP中写的所有字符都可以认为是这种类型，比如function name、class name、variable name、静态字符串等等，我们这样定义:`$a = "hi~;"`后面的字符串内容是唯一不变的，这些字符串等同于C语言中定义在静态变量区的字符串：`char *a = "hi~";`，这些字符串的生命周期为request期间，request完成后会统一销毁释放，自然也就无需在运行期间通过引用计数管理内存。
+* __interned string：__ 内部字符串，这是种什么类型？我们在PHP中写的所有字符都可以认为是这种类型，比如function name、class name、variable name、静态字符串等等，我们这样定义:`$a = "hi~;"`后面的字符串内容是唯一不变的，这些字符串等同于C语言中定义在静态变量区的字符串：`char *a = "hi~";`，这些字符串的生命周期为request期间，request完成后会统一销毁释放，自然也就无需在运行期间通过引用计数管理内存。
 
-* __immutable array：__只有在用opcache的时候才会用到这种类型，不清楚具体实现，暂时忽略。
+* __immutable array：__ 只有在用opcache的时候才会用到这种类型，不清楚具体实现，暂时忽略。
 
 #### 2.1.3.2 写时复制
 上一小节介绍了引用计数，多个变量可能指向同一个value，然后通过refcount统计引用数，这时候如果其中一个变量试图更改value的内容则会重新拷贝一份value修改，同时断开旧的指向，写时复制的机制在计算机系统中有非常广的应用，它只有在必要的时候(写)才会发生硬拷贝，可以很好的提高效率，下面从示例看下：
@@ -285,14 +285,14 @@ $b[] = 3;
 |resource        |            |
 |reference       |            |
 ```
-__copyable__的意思是当value发生duplication时是否需要copy，这个具体有两种情形下会发生：
-* a.从__literal变量区__复制到__局部变量区__，比如：`$a = [];`实际会有两个数组，而`$a = "hi~";//interned string`则只有一个string
+__copyable__ 的意思是当value发生duplication时是否需要copy，这个具体有两种情形下会发生：
+* a.从 __literal变量区__ 复制到 __局部变量区__ ，比如：`$a = [];`实际会有两个数组，而`$a = "hi~";//interned string`则只有一个string
 * b.局部变量区分离时(写时复制)：如改变变量内容时引用计数大于1则需要分离，`$a = [];$b = $a; $b[] = 1;`这里会分离，类型是array所以可以复制，如果是对象：`$a = new user;$b = $a;$a->name = "dd";`这种情况是不会复制object的，$a、$b指向的对象还是同一个
 
 具体literal、局部变量区变量的初始化、赋值后面编译、执行两篇文章会具体分析，这里知道变量有个`copyable`的属性就行了。
 
 #### 2.1.3.3 变量回收
-PHP变量的回收主要有两种：主动销毁、自动销毁。主动销毁指的就是__unset__，而自动销毁就是PHP的自动管理机制，在return时减掉局部变量的refcount，即使没有显式的return，PHP也会自动给加上这个操作。
+PHP变量的回收主要有两种：主动销毁、自动销毁。主动销毁指的就是 __unset__ ，而自动销毁就是PHP的自动管理机制，在return时减掉局部变量的refcount，即使没有显式的return，PHP也会自动给加上这个操作，另外一个就是写时复制时会断开原来value的指向，这时候也会检查断开后旧value的refcount。
 
 #### 2.1.3.4 垃圾回收
 PHP变量的回收是根据refcount实现的，当unset、return时会将变量的引用计数减掉，如果refcount减到0则直接释放value，这是变量的简单gc过程，但是实际过程中出现gc无法回收导致内存泄漏的bug，先看下一个例子：
