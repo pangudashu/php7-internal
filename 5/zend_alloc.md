@@ -78,7 +78,7 @@ static void alloc_globals_ctor(zend_alloc_globals *alloc_globals)
     alloc_globals->mm_heap = zend_mm_init();
 }
 ```
-__alloc_globals__是一个全局变量，即__AG宏__，它只有一个成员:mm_heap，保存着整个内存池的信息，所有内存的分配都是基于这个值，多线程模式下(ZTS)会有多个heap，也就是说每个线程都有一个独立的内存池，看下它的初始化：
+__alloc_globals__ 是一个全局变量，即 __AG宏__  ，它只有一个成员:mm_heap，保存着整个内存池的信息，所有内存的分配都是基于这个值，多线程模式下(ZTS)会有多个heap，也就是说每个线程都有一个独立的内存池，看下它的初始化：
 ```c
 static zend_mm_heap *zend_mm_init(void)
 {
@@ -154,7 +154,7 @@ static void *zend_mm_alloc_huge(zend_mm_heap *heap, size_t size ZEND_FILE_LINE_D
 huge的分配过程还是比较简单的。
 
 #### 5.1.3.2 Large分配
-大于3/4的page_size(4KB)且小于等于511个page_size的内存申请，也就是一个chunk的大小够用(之所以是511个page而不是512个是因为第一个page始终被chunk结构占用)，__如果申请多个page的话 分配的时候这些page都是连续的__。
+大于3/4的page_size(4KB)且小于等于511个page_size的内存申请，也就是一个chunk的大小够用(之所以是511个page而不是512个是因为第一个page始终被chunk结构占用)，__如果申请多个page的话 分配的时候这些page都是连续的__ 。
 
 ```c
 static zend_always_inline void *zend_mm_alloc_large(zend_mm_heap *heap, size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
@@ -170,9 +170,9 @@ static zend_always_inline void *zend_mm_alloc_large(zend_mm_heap *heap, size_t s
     return ptr;
 }
 ```
-进一步看下`zend_mm_alloc_pages`，这个过程比较复杂，简单描述的话就是从第一个chunk开始查找当前chunk下是否有pages_count个连续可用的page，有的话就停止查找，没有的话则接着查找下一个chunk，如果直到最后一个chunk也没找到则重新分配一个新的chunk并插入chunk链表，这个过程中最不好理解的一点在于如何查找pages_count个连续可用的page，这个主要根据__chunk->free_map__实现的，在看具体执行过程之前我们先解释下__free_map__的作用:
+进一步看下`zend_mm_alloc_pages`，这个过程比较复杂，简单描述的话就是从第一个chunk开始查找当前chunk下是否有pages_count个连续可用的page，有的话就停止查找，没有的话则接着查找下一个chunk，如果直到最后一个chunk也没找到则重新分配一个新的chunk并插入chunk链表，这个过程中最不好理解的一点在于如何查找pages_count个连续可用的page，这个主要根据 __chunk->free_map__ 实现的，在看具体执行过程之前我们先解释下 __free_map__ 的作用:
 
-__我们已经知道每个chunk由512个page组成，而不管是large分配还是small分配，其分配的最小粒子都是page(small也是先分配1个或多个page然后再进行的切割)，所以需要有一个数组来记录每个page是否已经分配，free_map的作用就是标识当前chunk下各page的分配与否，比较特别的是free_map并不是512大小的数组，因为需要记录的信息非常简单，只需要一个bit位就够了，所以free_map就用`长整形`的各bit位来记录的（实际就是bitmap），不同位数的机器长整形大小不同，因此在32、64位下16或8个长整形就够512bit了(每个byte等于8bit，长整形为4byte或8byte)，当然这么做并仅仅是节省空间，更重要的作用是可以提高查询效率__。
+__我们已经知道每个chunk由512个page组成，而不管是large分配还是small分配，其分配的最小粒子都是page(small也是先分配1个或多个page然后再进行的切割)，所以需要有一个数组来记录每个page是否已经分配，free_map的作用就是标识当前chunk下各page的分配与否，比较特别的是free_map并不是512大小的数组，因为需要记录的信息非常简单，只需要一个bit位就够了，所以free_map就用`长整形`的各bit位来记录的（实际就是bitmap），不同位数的机器长整形大小不同，因此在32、64位下16或8个长整形就够512bit了(每个byte等于8bit，长整形为4byte或8byte)，当然这么做并仅仅是节省空间，更重要的作用是可以提高查询效率__ 。
 
 ```c
 typedef zend_ulong zend_mm_bitset;    /* 4-byte or 8-byte integer */
@@ -234,16 +234,16 @@ found: //找到可用page，page编号为page_num至(page_num + pages_count)
 ```
 查找过程就是从第一个chunk开始搜索，如果当前chunk没有合适的则进入下一chunk，如果直到最后都没有找到则新创建一个chunk。
 
-注意：查找page的过程并不仅仅是够数即可，这里有一个标准是：__申请的一个或多个的page要尽可能的填满chunk的空隙__，也就是说如果当前chunk有多块内存满足需求则会选择最合适的那块，而合适的标准前面提到的那个。
+注意：查找page的过程并不仅仅是够数即可，这里有一个标准是：__申请的一个或多个的page要尽可能的填满chunk的空隙__ ，也就是说如果当前chunk有多块内存满足需求则会选择最合适的那块，而合适的标准前面提到的那个。
 
-__最优page的检索过程__：
+__最优page的检索过程__ ：
 
-* __step1:__首先从第一个page分组(page 0-63)开始检查，如果当前分组无可用page(即free_map[x] = -1)则进入下一分组，直到当前分组有空闲page，然后进入step2
-* __step2:__当前分组有可用page，首先找到第一个可用page的位置，记作page_num，接着__从page_num开始__向下找第一个已分配page的位置，记作end_page_num，这个地方需要注意，__如果当前分组剩下的page都是可用的则会进入下一分组接着搜索__，直到找到为止，这里还会借助chunk->free_tail避免无谓的查找到最后分组
-* __step3:__根据上一步找到的page_num、end_page_num可计算得到当前可用内存块大小为len个page，然后与申请的page页数(page_count)比较
-    * __step3.1:__如果len=page_count则表示找到的内存块符合申请条件且非常完美，直接从page_num开始分配page_count个page
-    * __step3.2:__如果len>page_count则表示找到的内存块符合条件且空间很充裕，暂且记录下len、page_num，然后继续向下搜索，如果有更合适的则用更合适的替代
-    * __step3.3:__如果len<page_count则表示当前内存块不够申请的大小，不符合条件，然后将这块空间的全部page设置为已分配(这样下一轮检索就不会再次找到它了)，接着从step1重新检索
+* __step1:__ 首先从第一个page分组(page 0-63)开始检查，如果当前分组无可用page(即free_map[x] = -1)则进入下一分组，直到当前分组有空闲page，然后进入step2
+* __step2:__ 当前分组有可用page，首先找到第一个可用page的位置，记作page_num，接着__从page_num开始__向下找第一个已分配page的位置，记作end_page_num，这个地方需要注意，__如果当前分组剩下的page都是可用的则会进入下一分组接着搜索__，直到找到为止，这里还会借助chunk->free_tail避免无谓的查找到最后分组
+* __step3:__ 根据上一步找到的page_num、end_page_num可计算得到当前可用内存块大小为len个page，然后与申请的page页数(page_count)比较
+    * __step3.1:__ 如果len=page_count则表示找到的内存块符合申请条件且非常完美，直接从page_num开始分配page_count个page
+    * __step3.2:__ 如果len>page_count则表示找到的内存块符合条件且空间很充裕，暂且记录下len、page_num，然后继续向下搜索，如果有更合适的则用更合适的替代
+    * __step3.3:__ 如果len<page_count则表示当前内存块不够申请的大小，不符合条件，然后将这块空间的全部page设置为已分配(这样下一轮检索就不会再次找到它了)，接着从step1重新检索
 
 下面从一个例子具体看下，以64bit整形为例，假如当前page分配情况如下图-(1)(group1全部已分配;group2中page 67-68、71-74未分配，其余都已分配;group3中除page 128-129、133已分配外其余都未分配)，现在要申请3个page：
 
@@ -298,9 +298,9 @@ small内存总共有30种固定大小的规格：8,16,24,32,40,48,56,64,80,96,11
 ```
 small内存的分配过程：
 
-* __step1:__首先根据申请内存的大小在heap->free_slot中找到对应的slot规格bin_num，如果当前slot为空则首先分配对应的page，然后将这些page内存按slot大小切割为zend_mm_free_slot单向链表，free_slot[bin_num]始终指向第一个可用的slot
-* __step2:__如果申请内存大小对应的的slot链表不为空则直接返回free_slot[bin_num]，然后将free_slot[bin_num]指向下一个空闲位置free_slot[bin_num]->next_free_slot
-* __step3:__释放内存时先将此内存的next_free_slot指向free_slot[bin_num]，然后将free_slot[bin_num]指向释放的内存，也就是将释放的内存插到链表头部
+* __step1:__ 首先根据申请内存的大小在heap->free_slot中找到对应的slot规格bin_num，如果当前slot为空则首先分配对应的page，然后将这些page内存按slot大小切割为zend_mm_free_slot单向链表，free_slot[bin_num]始终指向第一个可用的slot
+* __step2:__ 如果申请内存大小对应的的slot链表不为空则直接返回free_slot[bin_num]，然后将free_slot[bin_num]指向下一个空闲位置free_slot[bin_num]->next_free_slot
+* __step3:__ 释放内存时先将此内存的next_free_slot指向free_slot[bin_num]，然后将free_slot[bin_num]指向释放的内存，也就是将释放的内存插到链表头部
 
 ![free_slot](../img/free_slot.png)
 
