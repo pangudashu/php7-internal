@@ -458,11 +458,11 @@ void zend_compile_assign(znode *result, zend_ast *ast)
 ```
 这个地方主要有三步关键操作：
 
-__第1步：__ 变量赋值操作有两部分：变量名、变量值，所以首先是针对变量名的操作，介绍zend_op_array时曾提到每个PHP变量都有一个编号，变量的读写都是根据这个编号操作的，这个编号最早就是这一步生成的。
+> __第1步：__ 变量赋值操作有两部分：变量名、变量值，所以首先是针对变量名的操作，介绍zend_op_array时曾提到每个PHP变量都有一个编号，变量的读写都是根据这个编号操作的，这个编号最早就是这一步生成的。
 
-![](../img/zend_lookup_cv.png)
+> ![](../img/zend_lookup_cv.png)
 
-中间过程我们不再细看，这里重点看下变量编号的过程，这个过程比较简单，每发现一个变量就遍历zend_op_array.vars数组，看此变量是否已经保存，没有保存的话则存入vars，然后后续变量的使用都是用的这个变量在数组中的下标，比如第一次定义的时候：`$a = 123；`将$a编号为0，然后：`echo $a;`再次使用时会遍历vars，发现已经存在，直接用其下标操作$a。
+> 中间过程我们不再细看，这里重点看下变量编号的过程，这个过程比较简单，每发现一个变量就遍历zend_op_array.vars数组，看此变量是否已经保存，没有保存的话则存入vars，然后后续变量的使用都是用的这个变量在数组中的下标，比如第一次定义的时候：`$a = 123；`将$a编号为0，然后：`echo $a;`再次使用时会遍历vars，发现已经存在，直接用其下标操作$a。
 ```c
 static int lookup_cv(zend_op_array *op_array, zend_string* name)
 {
@@ -492,7 +492,7 @@ static int lookup_cv(zend_op_array *op_array, zend_string* name)
     return (int)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, i); //传NULL时返回的就是i
 }
 ```
-__第2步：__ 编译变量值表达式，再次调用zend_compile_expr()编译，示例中的情况比较简单，expr_ast.kind为ZEND_AST_ZVAL：
+> __第2步：__ 编译变量值表达式，再次调用zend_compile_expr()编译，示例中的情况比较简单，expr_ast.kind为ZEND_AST_ZVAL：
 ```c
 void zend_compile_expr(znode *result, zend_ast *ast)
 {
@@ -505,7 +505,7 @@ void zend_compile_expr(znode *result, zend_ast *ast)
     }
 }
 ```
-__第3步：__ 上面两步已经分别生成了变量赋值的op1、op2，下面就是根据这俩值生成opcode的过程。
+> __第3步：__ 上面两步已经分别生成了变量赋值的op1、op2，下面就是根据这俩值生成opcode的过程。
 ```c
 tatic zend_op *zend_emit_op(znode *result, zend_uchar opcode, znode *op1, znode *op2)
 {
@@ -542,4 +542,4 @@ static inline void zend_make_var_result(znode *result, zend_op *opline)
 ```
 到这我们示例中的第1条赋值语句就算编译完了，第2条同样是赋值，过程与上面相同，我们直接看最好一条输出的语句。
 
-__(3)、__ echo语句的编译。
+__(3)、__ echo语句的编译
