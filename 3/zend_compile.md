@@ -18,4 +18,4 @@ PHP编译阶段的基本过程如下图：
 
 ![zend_compile_process](../img/zend_compile_process.png)
 
-后面两个小节将看下__PHP代码->AST->Opcodes__的编译过程。
+后面两个小节将看下 __PHP代码->AST->Opcodes__ 的具体编译过程。
