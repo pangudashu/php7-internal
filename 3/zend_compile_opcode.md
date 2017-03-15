@@ -406,7 +406,8 @@ zendparse()阶段生成的AST：
 > __(1)、__ 首先从根节点开始，有3个child，第一个节点类型为ZEND_AST_ASSIGN，zend_compile_stmt()中走到default分支
 
 > __(2)、__ ZEND_AST_ASSIGN类型由zend_compile_expr()处理：
-> ```c
+
+```c
 void zend_compile_expr(znode *result, zend_ast *ast)
 {
     CG(zend_lineno) = zend_ast_get_lineno(ast);
@@ -426,7 +427,7 @@ void zend_compile_expr(znode *result, zend_ast *ast)
 }
 ```
 > 继续进入zend_compile_assign()：
-> ```c
+```c
 void zend_compile_assign(znode *result, zend_ast *ast)
 {
     zend_ast *var_ast = ast->child[0]; //变量名
@@ -460,7 +461,7 @@ void zend_compile_assign(znode *result, zend_ast *ast)
 
 >> __第1步：__ 变量赋值操作有两部分：变量名、变量值，所以首先是针对变量名的操作，介绍zend_op_array时曾提到每个PHP变量都有一个编号，变量的读写都是根据这个编号操作的，这个编号最早就是这一步生成的。
 
->> ![](../img/zend_lookup_cv.png)
+![](../img/zend_lookup_cv.png)
 
 >> 中间过程我们不再细看，这里重点看下变量编号的过程，这个过程比较简单，每发现一个变量就遍历zend_op_array.vars数组，看此变量是否已经保存，没有保存的话则存入vars，然后后续变量的使用都是用的这个变量在数组中的下标，比如第一次定义的时候：`$a = 123；`将$a编号为0，然后：`echo $a;`再次使用时会遍历vars，发现已经存在，直接用其下标操作$a。
 ```c
@@ -489,8 +490,16 @@ static int lookup_cv(zend_op_array *op_array, zend_string* name)
     }
 
     op_array->vars[i] = zend_new_interned_string(name);
-    return (int)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, i); //传NULL时返回的就是i
+    return (int)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, i); //传NULL时返回的是96 + i*sizeof(zval)
 }
+```
+>> __注意：这里变量的编号从0、1、2、3...依次递增的，但是实际使用中并不是直接用的这个下标，而是转化成了内存偏移量offset，这个是`ZEND_CALL_VAR_NUM`宏处理的，所以变量偏移量实际是96、112、128...递增的，这个96是根据zend_execute_data大小设定的(不同的平台下对应的值可能不同)，下一篇介绍zend执行流程时会详细介绍这个结构。
+```c
+#define ZEND_CALL_FRAME_SLOT \
+    ((int)((ZEND_MM_ALIGNED_SIZE(sizeof(zend_execute_data)) + ZEND_MM_ALIGNED_SIZE(sizeof(zval)) - 1) / ZEND_MM_ALIGNED_SIZE(sizeof(zval))))
+
+#define ZEND_CALL_VAR_NUM(call, n) \
+    (((zval*)(call)) + (ZEND_CALL_FRAME_SLOT + ((int)(n))))
 ```
 >> __第2步：__ 编译变量值表达式，再次调用zend_compile_expr()编译，示例中的情况比较简单，expr_ast.kind为ZEND_AST_ZVAL：
 ```c
@@ -542,6 +551,31 @@ static inline void zend_make_var_result(znode *result, zend_op *opline)
 ```
 >> 到这我们示例中的第1条赋值语句就算编译完了，第2条同样是赋值，过程与上面相同，我们直接看最好一条输出的语句。
 
-> __(3)、__ echo语句的编译:`echo $a,$b;`
+> __(3)、__ echo语句的编译:`echo $a,$b;`实际从编译后的语法树就可以看出，一次echo多个也被编译为多次echo了，所以示例中的用法与：`echo $a; echo $b;`等价，我们只分析其中一个就可以了。
 
-> ![](../img/zend_ast_echo.png)
+![](../img/zend_ast_echo.png)
+
+> `zend_compile_stmt()`中首先发现节点类型是`ZEND_AST_STMT_LIST`，然后调用`zend_compile_stmt_list()`分别编译child，具体的流程如下图所示：
+
+![](../img/zend_ast_echo_p.png)
+
+> 最后生成`zend_op`的过程：
+```c
+void zend_compile_echo(zend_ast *ast)
+{       
+    zend_op *opline;
+    zend_ast *expr_ast = ast->child[0];
+
+    znode expr_node;
+    zend_compile_expr(&expr_node, expr_ast);
+
+    opline = zend_emit_op(NULL, ZEND_ECHO, &expr_node, NULL);//生成1条新的opcode
+    opline->extended_value = 0;
+} 
+```
+
+最终`zend_compile_top_stmt()`编译完成后`CG(active_op_array)`结构：
+
+
+
+
