@@ -268,11 +268,11 @@ static zend_always_inline void zend_vm_stack_free_call_frame(zend_execute_data *
 （这里的函数指用户自定义的PHP函数，不含内部函数）
 上一节我们介绍了zend执行引擎的几个关键步骤，也简单的介绍了函数的调用过程，这里再单独总结下：
 
-* __【初始化阶段】：__这个阶段首先查找到函数的zend_function，普通function就是到EG(function_table)中查找，成员方法则先从EG(class_table)中找到zend_class_entry，然后再进一步在其function_table找到zend_function，接着就是根据zend_op_array新分配__zend_execute_data__结构并设置上下文切换的指针
-* __【参数传递阶段】：__如果函数没有参数则跳过此步骤，有的话则会将函数所需参数传递到__初始化阶段__新分配的__zend_execute_data动态变量区__
-* __【函数调用阶段】：__这个步骤主要是做上下文切换，将执行器切换到调用的函数上，可以理解会在这个阶段__递归调用zend_execute_ex__函数实现call的过程(实际并一定是递归，默认是在while(1){...}中切换执行空间的，但如果我们在扩展中重定义了zend_execute_ex用来介入执行流程则就是递归调用)
-* __【函数执行阶段】：__被调用函数内部的执行过程，首先是接收参数，然后开始执行opcode
-* __【函数返回阶段】：__被调用函数执行完毕返回过程，将返回值传递给调用方的zend_execute_data变量区，然后释放zend_execute_data以及分配的局部变量，将上下文切换到调用前，回到调用的位置继续执行，这个实际是函数执行中的一部分，不算是独立的一个过程
+* __【初始化阶段】__这个阶段首先查找到函数的zend_function，普通function就是到EG(function_table)中查找，成员方法则先从EG(class_table)中找到zend_class_entry，然后再进一步在其function_table找到zend_function，接着就是根据zend_op_array新分配__zend_execute_data__结构并设置上下文切换的指针
+* __【参数传递阶段】__如果函数没有参数则跳过此步骤，有的话则会将函数所需参数传递到__初始化阶段__新分配的__zend_execute_data动态变量区__
+* __【函数调用阶段】__这个步骤主要是做上下文切换，将执行器切换到调用的函数上，可以理解会在这个阶段__递归调用zend_execute_ex__函数实现call的过程(实际并一定是递归，默认是在while(1){...}中切换执行空间的，但如果我们在扩展中重定义了zend_execute_ex用来介入执行流程则就是递归调用)
+* __【函数执行阶段】__被调用函数内部的执行过程，首先是接收参数，然后开始执行opcode
+* __【函数返回阶段】__被调用函数执行完毕返回过程，将返回值传递给调用方的zend_execute_data变量区，然后释放zend_execute_data以及分配的局部变量，将上下文切换到调用前，回到调用的位置继续执行，这个实际是函数执行中的一部分，不算是独立的一个过程
 
 接下来我们一个具体的例子详细分析下各个阶段的处理过程：
 ```php
