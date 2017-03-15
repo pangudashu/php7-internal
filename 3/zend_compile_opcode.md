@@ -300,7 +300,7 @@ ZEND_API zend_op_array *compile_file(zend_file_handle *file_handle, int type)
         if (!zendparse()) { //语法解析
             zval retval_zv;
             zend_file_context original_file_context; //保存原来的zend_file_context
-            zend_oparray_context original_oparray_context; //保存原来的zend_oparray_context
+            zend_oparray_context original_oparray_context; //保存原来的zend_oparray_context，编译期间用于记录当前zend_op_array的opcodes、vars等数组的总大小
             zend_op_array *original_active_op_array = CG(active_op_array);
             op_array = emalloc(sizeof(zend_op_array)); //分配zend_op_array结构
             init_op_array(op_array, ZEND_USER_FUNCTION, INITIAL_OP_ARRAY_SIZE);//初始化op_array
@@ -359,7 +359,7 @@ void zend_compile_top_stmt(zend_ast *ast)
     //function、class两种情况的处理，非常关键的一步操作，后面分析函数、类实现的章节再详细分析
     if (ast->kind == ZEND_AST_FUNC_DECL || ast->kind == ZEND_AST_CLASS) {
         CG(zend_lineno) = ((zend_ast_decl *) ast)->end_lineno;
-        zend_do_early_binding();
+        zend_do_early_binding(); //很重要!!!
     }
 }
 ```
@@ -574,8 +574,69 @@ void zend_compile_echo(zend_ast *ast)
 } 
 ```
 
-最终`zend_compile_top_stmt()`编译完成后`CG(active_op_array)`结构：
+最终`zend_compile_top_stmt()`编译完成后整个编译流程基本是完成了，`CG(active_op_array)`结构如下图所示，但是后面还有一个处理`pass_two()`。
 
 ![](../img/zend_op_array_2.png)
 
+```c
+ZEND_API int pass_two(zend_op_array *op_array)
+{
+    zend_op *opline, *end;
 
+    if (!ZEND_USER_CODE(op_array->type)) {
+        return 0;
+    }
+
+    //重置一些CG(context)的值，暂且忽略
+    ...
+
+    opline = op_array->opcodes;
+    end = opline + op_array->last;
+    while (opline < end) {
+        switch(opline->opcode){
+            //这里对一些操作进行针对性的处理，后面有遇到的情况我们再看
+            ...
+        }
+        
+        //如果是IS_CONST会将数组下标转化为内存偏移量，与IS_CV那种处理方式相同
+        //所以这里实际就是将0、1、2...转为为16、32、48...（即：编号*sizeof(zval)）
+        if (opline->op1_type == IS_CONST) {
+            ZEND_PASS_TWO_UPDATE_CONSTANT(op_array, opline->op1);
+        } else if (opline->op1_type & (IS_VAR|IS_TMP_VAR)) {
+            //上面作相同的处理，不同的是这里的起始值是接着IS_CV的
+            opline->op1.var = (uint32_t)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, op_array->last_var + opline->op1.var);
+        }
+        //与op1完全相同
+        if (opline->op2_type == IS_CONST) {
+            ZEND_PASS_TWO_UPDATE_CONSTANT(op_array, opline->op2);
+        } else if (opline->op2_type & (IS_VAR|IS_TMP_VAR)) {
+            opline->op2.var = (uint32_t)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, op_array->last_var + opline->op2.var);
+        }
+        //返回值与op1/2相同处理
+        if (opline->result_type & (IS_VAR|IS_TMP_VAR)) {
+            opline->result.var = (uint32_t)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, op_array->last_var + opline->result.var);
+        }
+        //设置此opcode的处理handler
+        ZEND_VM_SET_OPCODE_HANDLER(opline);
+        opline++;
+    }
+
+    //标识当前op_array已执行过此操作
+    op_array->fn_flags |= ZEND_ACC_DONE_PASS_TWO;
+    return 0;
+}
+```
+抛开特殊opcode的处理，`pass_two()`主要有两个重要操作：
+
+* (1)将IS_CONST、IS_VAR、IS_TMP_VAR类型的操作数、返回值转化为内存偏移量，与上面提到的IS_CV变量的处理一样，其中IS_CONST类型起始值为0，然后按照编号依次递增sizeof(zval)，而IS_VAR、IS_TMP_VAR唯一的不同时它的初始值接着IS_CV的，简单的讲就是先安排PHP变量的，然后接着才是各条语句的中间值、返回值
+* (2)另外一个重要操作就是设置各指令的处理handler，这个前面《3.1.2.1.1 handler》已经介绍过其索引规则
+
+经过`pass_two()`处理后opcodes的样子：
+
+![](../img/zend_op_array_3.png)
+
+__总结：__
+
+到这里整个PHP编译阶段就算全部完成了，最终编译的结果就是zend_op_array，其中最核心的操作就是AST的编译了，有兴趣的可以多写几个例子去看下不同节点类型的处理方式。
+
+另外，编译阶段很关键的一个操作就是确定了各个 __变量、中间值、临时值、返回值、字面量__的__内存编号__，这个地方非常重要，后面介绍执行流程时也会用到。
