@@ -268,11 +268,11 @@ static zend_always_inline void zend_vm_stack_free_call_frame(zend_execute_data *
 （这里的函数指用户自定义的PHP函数，不含内部函数）
 上一节我们介绍了zend执行引擎的几个关键步骤，也简单的介绍了函数的调用过程，这里再单独总结下：
 
-* __【初始化阶段】__这个阶段首先查找到函数的zend_function，普通function就是到EG(function_table)中查找，成员方法则先从EG(class_table)中找到zend_class_entry，然后再进一步在其function_table找到zend_function，接着就是根据zend_op_array新分配__zend_execute_data__结构并设置上下文切换的指针
-* __【参数传递阶段】__如果函数没有参数则跳过此步骤，有的话则会将函数所需参数传递到__初始化阶段__新分配的__zend_execute_data动态变量区__
-* __【函数调用阶段】__这个步骤主要是做上下文切换，将执行器切换到调用的函数上，可以理解会在这个阶段__递归调用zend_execute_ex__函数实现call的过程(实际并一定是递归，默认是在while(1){...}中切换执行空间的，但如果我们在扩展中重定义了zend_execute_ex用来介入执行流程则就是递归调用)
-* __【函数执行阶段】__被调用函数内部的执行过程，首先是接收参数，然后开始执行opcode
-* __【函数返回阶段】__被调用函数执行完毕返回过程，将返回值传递给调用方的zend_execute_data变量区，然后释放zend_execute_data以及分配的局部变量，将上下文切换到调用前，回到调用的位置继续执行，这个实际是函数执行中的一部分，不算是独立的一个过程
+* __【初始化阶段】__ 这个阶段首先查找到函数的zend_function，普通function就是到EG(function_table)中查找，成员方法则先从EG(class_table)中找到zend_class_entry，然后再进一步在其function_table找到zend_function，接着就是根据zend_op_array新分配 __zend_execute_data__ 结构并设置上下文切换的指针
+* __【参数传递阶段】__ 如果函数没有参数则跳过此步骤，有的话则会将函数所需参数传递到 __初始化阶段__ 新分配的 __zend_execute_data动态变量区__ 
+* __【函数调用阶段】__ 这个步骤主要是做上下文切换，将执行器切换到调用的函数上，可以理解会在这个阶段__递归调用zend_execute_ex__函数实现call的过程(实际并一定是递归，默认是在while(1){...}中切换执行空间的，但如果我们在扩展中重定义了zend_execute_ex用来介入执行流程则就是递归调用)
+* __【函数执行阶段】__ 被调用函数内部的执行过程，首先是接收参数，然后开始执行opcode
+* __【函数返回阶段】__ 被调用函数执行完毕返回过程，将返回值传递给调用方的zend_execute_data变量区，然后释放zend_execute_data以及分配的局部变量，将上下文切换到调用前，回到调用的位置继续执行，这个实际是函数执行中的一部分，不算是独立的一个过程
 
 接下来我们一个具体的例子详细分析下各个阶段的处理过程：
 ```php
@@ -329,9 +329,9 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INIT_FCALL_SPEC_CONST_HANDLER(
 
 ![zend_exe_init](../img/func_exe_init.png)
 
-注意__This__这个值，它并不仅仅指的是面向对象中那个this，此外它还记录着其它两个信息：
-* __call_info：__调用信息，通过__This.u1.reserved__记录，因为我们的主脚本、用户自定义函数调用、内核函数调用、include/require/eval等都会生成一个zend_execute_data，这个值就是用来区分这些不同类型的，对应的具体值为：ZEND_CALL_TOP_CODE、ZEND_CALL_NESTED_FUNCTION、ZEND_CALL_TOP_FUNCTION、ZEND_CALL_NESTED_CODE，这个信息是在分配zend_execute_data时显式声明的
-* __num_args：__函数调用实际传入的参数数量，通过__This.u2.num_args__记录，比如示例中我们定义的函数有3个参数，其中1个是必传的，而我们调用时传入了2个，所以这个例子中的num_args就是2，这个值在编译时知道的，保存在__zend_op->extended_value__中
+注意 __This__ 这个值，它并不仅仅指的是面向对象中那个this，此外它还记录着其它两个信息：
+* __call_info：__ 调用信息，通过 __This.u1.reserved__ 记录，因为我们的主脚本、用户自定义函数调用、内核函数调用、include/require/eval等都会生成一个zend_execute_data，这个值就是用来区分这些不同类型的，对应的具体值为：ZEND_CALL_TOP_CODE、ZEND_CALL_NESTED_FUNCTION、ZEND_CALL_TOP_FUNCTION、ZEND_CALL_NESTED_CODE，这个信息是在分配zend_execute_data时显式声明的
+* __num_args：__ 函数调用实际传入的参数数量，通过 __This.u2.num_args__ 记录，比如示例中我们定义的函数有3个参数，其中1个是必传的，而我们调用时传入了2个，所以这个例子中的num_args就是2，这个值在编译时知道的，保存在 __zend_op->extended_value__ 中
 
 #### 3.3.3.2 参数传递阶段
 这个过程就是将当前作用空间下的变量值"复制"到新的zend_execute_data动态变量区中，那么调用方怎么知道要把值传递到新zend_execute_data哪个位置呢？实际这个地方是有固定规则的，zend_execute_data的动态变量区最前面是参数变量，按照参数的顺序依次分配，接着才是普通的局部变量、临时变量等，所以调用方就可以根据传的是第几个参数来确定其具体的存储位置。
@@ -340,7 +340,7 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INIT_FCALL_SPEC_CONST_HANDLER(
 
 ![func_exe_send_var](../img/func_exe_send_var.png)
 
-图中画的只是上面示例那种情况，比如`my_function(array());`直接传值则会是__literals区->新zend_execute_data动态变量区__的传递。
+图中画的只是上面示例那种情况，比如`my_function(array());`直接传值则会是 __literals区->新zend_execute_data动态变量区__ 的传递。
 
 #### 3.3.3.3 函数调用阶段
 这个过程主要是进行一些上下文切换，将执行器切换到调用的函数上。

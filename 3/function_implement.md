@@ -18,7 +18,7 @@ echo $a;
 
 /* } */
 ```
-
+#### 3.2.1.1 函数的存储结构
 下面具体看下PHP中函数的结构：
 
 ```c
@@ -33,14 +33,14 @@ union _zend_function {
         zend_uchar arg_flags[3]; /* bitset of arg_info.pass_by_reference */
         uint32_t fn_flags;
         zend_string *function_name;
-        zend_class_entry *scope;
+        zend_class_entry *scope; //成员方法所属类，面向对象实现中用到
         union _zend_function *prototype;
-        uint32_t num_args;
-        uint32_t required_num_args;
-        zend_arg_info *arg_info;
+        uint32_t num_args; //参数数量
+        uint32_t required_num_args; //必传参数数量
+        zend_arg_info *arg_info; //参数信息
     } common;
 
-    zend_op_array op_array;
+    zend_op_array op_array; //函数实际编译为普通的zend_op_array
     zend_internal_function internal_function;
 };
 ```
@@ -60,6 +60,7 @@ union _zend_function {
 
 PHP在编译阶段将用户自定义的函数编译为独立的opcodes，保存在`EG(function_table)`中，调用时重新分配新的zend_execute_data(相当于运行栈)，然后执行函数的opcodes，调用完再还原到旧的`zend_execute_data`，继续执行，关于zend引擎execute阶段后面会详细分析。
 
+#### 3.2.1.2 函数参数
 
 ### 3.2.2 内部函数
 上一节已经提过，内部函数指的是由内核、扩展提供的C语言编写的function，这类函数不需要经历opcode的编译过程，所以效率上要高于PHP用户自定义的函数，调用时与普通的C程序没有差异。
@@ -95,7 +96,7 @@ typedef struct _zend_internal_function {
 #### 3.2.2.2 定义与注册
 内部函数与用户自定义函数冲突，用户无法在PHP代码中覆盖内部函数，执行PHP脚本时会提示error错误。
 
-内部函数的定义非常简单，我们只需要创建一个普通的C函数，然后创建一个`zend_internal_function`结构添加到__EG(function_table)__(也可能是CG(function_table),取决于在哪一阶段注册)中即可使用，内部函数__通常__情况下是在php_module_startup阶段注册的，这里之所以说通常是按照标准的扩展定义，除了扩展提供的方式我们可以在任何阶段自由定义内部函数，当然并不建议这样做。下面我们先不讨论扩展标准的定义方式，我们先自己尝试下如何注册一个内部函数。
+内部函数的定义非常简单，我们只需要创建一个普通的C函数，然后创建一个`zend_internal_function`结构添加到 __EG(function_table)__ (也可能是CG(function_table),取决于在哪一阶段注册)中即可使用，内部函数 __通常__ 情况下是在php_module_startup阶段注册的，这里之所以说通常是按照标准的扩展定义，除了扩展提供的方式我们可以在任何阶段自由定义内部函数，当然并不建议这样做。下面我们先不讨论扩展标准的定义方式，我们先自己尝试下如何注册一个内部函数。
 
 根据`zend_internal_function`的结构我们知道需要定义一个handler：
 ```c
@@ -131,7 +132,7 @@ qp_test();
 结果输出：
 `call internal function 'qp_test'`
 
-这样一个内部函数就定义完成了。这里有一个地方需要注意的我们把这个函数注册到__CG(function_table)__中去了，而不是__EG(function_table)__，这是因为在`php_request_startup`阶段会把__CG(function_table)__赋值给__EG(function_table)__。
+这样一个内部函数就定义完成了。这里有一个地方需要注意的我们把这个函数注册到 __CG(function_table)__ 中去了，而不是 __EG(function_table)__ ，这是因为在`php_request_startup`阶段会把 __CG(function_table)__ 赋值给 __EG(function_table)__ 。
 
 上面的过程看着比较简单，但是在实际应用中不要这样做，PHP提供给我们一套标准的定义方式，接下来看下如何在扩展中按照官方方式提供一个内部函数。
 
