@@ -1,7 +1,7 @@
 ## 1.2 执行流程
 PHP的生命周期：
 
-![php_process](img/php.png)
+![php_process](../img/php.png)
 
 ### 1.2.1 模块初始化阶段
 
