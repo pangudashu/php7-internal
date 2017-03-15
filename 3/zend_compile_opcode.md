@@ -493,7 +493,7 @@ static int lookup_cv(zend_op_array *op_array, zend_string* name)
     return (int)(zend_intptr_t)ZEND_CALL_VAR_NUM(NULL, i); //传NULL时返回的是96 + i*sizeof(zval)
 }
 ```
->> __注意：这里变量的编号从0、1、2、3...依次递增的，但是实际使用中并不是直接用的这个下标，而是转化成了内存偏移量offset，这个是`ZEND_CALL_VAR_NUM`宏处理的，所以变量偏移量实际是96、112、128...递增的，这个96是根据zend_execute_data大小设定的(不同的平台下对应的值可能不同)，下一篇介绍zend执行流程时会详细介绍这个结构。
+>> __注意：这里变量的编号从0、1、2、3...依次递增的，但是实际使用中并不是直接用的这个下标，而是转化成了内存偏移量offset，这个是`ZEND_CALL_VAR_NUM`宏处理的，所以变量偏移量实际是96、112、128...递增的，这个96是根据zend_execute_data大小设定的(不同的平台下对应的值可能不同)，下一篇介绍zend执行流程时会详细介绍这个结构。__
 ```c
 #define ZEND_CALL_FRAME_SLOT \
     ((int)((ZEND_MM_ALIGNED_SIZE(sizeof(zend_execute_data)) + ZEND_MM_ALIGNED_SIZE(sizeof(zval)) - 1) / ZEND_MM_ALIGNED_SIZE(sizeof(zval))))
@@ -576,6 +576,6 @@ void zend_compile_echo(zend_ast *ast)
 
 最终`zend_compile_top_stmt()`编译完成后`CG(active_op_array)`结构：
 
-
+![](../img/zend_op_array_2.png)
 
 
