@@ -124,15 +124,15 @@ class User extends Human
 #### 3.4.1.2 类常量
 PHP中可以把在类中始终保持不变的值定义为常量，在定义和使用常量的时候不需要使用 $ 符号，常量的值必须是一个定值(如布尔型、整形、字符串、数组，php5.*不支持数组)，不能是变量、数学运算的结果或函数调用，也就是说它是只读的，无法进行赋值。
 
-常量通过__const__定义：
+常量通过 __const__ 定义：
 ```php
 class my_class {
     const 常量名 = 常量值;
 }
 ```
-常量通过__class_name::常量名__访问，或在class内部通过__self::常量名__访问。
+常量通过 __class_name::常量名__ 访问，或在class内部通过 __self::常量名__ 访问。
 
-常量是类维度的数据(而不是对象的)，它们通过`zend_class_entry.constants_table`进行存储，这是一个哈希结构，通过__常量名__索引，value就是具体定义的常量值。
+常量是类维度的数据(而不是对象的)，它们通过`zend_class_entry.constants_table`进行存储，这是一个哈希结构，通过 __常量名__ 索引，value就是具体定义的常量值。
 
 __常量的读取：__
 
@@ -160,14 +160,14 @@ echo my_class::A1;
 
 事实上这两种情况内核会有两种不同的处理方式，示例2这种情况的处理与我们上面的猜测相同，而示例1则有另外一种处理方式：PHP代码的编译是顺序的，示例1的情况编译到`echo my_class::A1`这行时首先会尝试检索下是否已经编译了my_class，如果能在CG(class_table)中找到，则进一步从类的`contants_table`查找对应的常量，找到的话则会复制其value替换常量，简单的讲就是类似C语言中的宏，__编译时替换为实际的值了__，而不是在运行时再去检索。
 
-具体debug下上面两个例子会发现示例2的主要的opcode只有一个ZEND_ECHO，也就是直接输出值了，并没有设计类常量的查找，这就是因为编译的时候已经将__my_class::A1__替换为__hi__了，`echo my_class::A1;`等同于：`echo "hi";`；而示例1首先的操作则是ZEND_FETCH_CONSTANT，查找常量，接着才是ZEND_ECHO。
+具体debug下上面两个例子会发现示例2的主要的opcode只有一个ZEND_ECHO，也就是直接输出值了，并没有设计类常量的查找，这就是因为编译的时候已经将 __my_class::A1__ 替换为 __hi__ 了，`echo my_class::A1;`等同于：`echo "hi";`；而示例1首先的操作则是ZEND_FETCH_CONSTANT，查找常量，接着才是ZEND_ECHO。
 
 #### 3.4.1.3 成员属性
 类的变量成员叫做“属性”。属性声明是由关键字 __public__，__protected__ 或者 __private__ 开头，然后跟一个普通的变量声明来组成，关于这三个关键字这里不作讨论，后面分析可见性的章节再作说明。
 
 属性中的变量可以初始化，但是初始化的值必须是常数，这里的常数是指 PHP 脚本在编译阶段时就可以得到其值，而不依赖于运行时的信息才能求值，比如`public $time = time();`这样定义一个属性就会触发语法错误。
 
-成员属性又分为两类：__普通属性__、__静态属性__。静态属性通过__static__声明，通过__self::$property__或__类名::$property__访问；普通属性通过__$this->property__或__$object->property__访问。
+成员属性又分为两类：__普通属性__、__静态属性__。静态属性通过 __static__ 声明，通过 __self::$property__ 或 __类名::$property__ 访问；普通属性通过 __$this->property__ 或 __$object->property__ 访问。
 
 ```php
 class my_class {
@@ -178,13 +178,13 @@ class my_class {
     public static $property_2 = 初始化值;
 }
 ```
-与常量的存储方式不同，成员属性的__初始化值__并不是__直接__用以"属性名"作为索引的哈希表存储的，而是通过数组保存的，普通属性、静态属性各有一个数组分别存储。
+与常量的存储方式不同，成员属性的 __初始化值__ 并不是 __直接__ 用以"属性名"作为索引的哈希表存储的，而是通过数组保存的，普通属性、静态属性各有一个数组分别存储。
 
 ![zend_class_property](../img/zend_class_property.png)
 
 看到这里可能有个疑问：使用时成员属性是如果找到的呢？
 
-实际只是成员属性的__VALUE__通过数组存储的，访问时仍然是根据以"属性名"为索引的散列表查找具体VALUE的，这个散列表并没有按照普通属性、静态属性分为两个，而是只用了一个：__HashTable properties_info__。此哈希表存储元素的value类型为__zend_property_info__。
+实际只是成员属性的 __VALUE__ 通过数组存储的，访问时仍然是根据以"属性名"为索引的散列表查找具体VALUE的，这个散列表并没有按照普通属性、静态属性分为两个，而是只用了一个：__HashTable properties_info__ 。此哈希表存储元素的value类型为__zend_property_info__ 。
 
 ```c
 typedef struct _zend_property_info {
@@ -217,7 +217,7 @@ class my_class {
     public static $property_3 = 110;
 }
 ```
-则__default_properties_table__、__default_static_properties_table__、__properties_info__关系图：
+则 __default_properties_table__、__default_static_properties_table__、__properties_info__ 关系图：
 
 ![zend_property_info](../img/zend_property_info.png)
 
@@ -247,7 +247,7 @@ my_class::test();
 $method = 'test';
 my_class::$method();
 ```
-静态方法中调用其它静态方法或静态变量可以通过__self__访问。
+静态方法中调用其它静态方法或静态变量可以通过 __self__ 访问。
 
 成员方法的调用与普通function过程基本相同，根据对象所属类或直接根据类取到method的zend_function，然后执行，具体的过程[《3.3 Zend引擎执行过程》](zend_executor.md)已经详细说过，这里不再重复。
 
