@@ -54,11 +54,11 @@ expr:
 
 ![zend_compile_process](../img/zend_compile_process.png)
 
-其中__zendparse()__就是词法、语法解析过程，这个函数实际就是bison中提供的语法解析函数__yyparse()__：
+其中 __zendparse()__ 就是词法、语法解析过程，这个函数实际就是bison中提供的语法解析函数 __yyparse()__ ：
 ```c
 #define yyparse         zendparse
 ```
-__yyparse()__不断调用__yylex()__得到token，然后根据token匹配语法规则：
+__yyparse()__ 不断调用 __yylex()__ 得到token，然后根据token匹配语法规则：
 
 ![](../img/zend_parse_2.png)
 
@@ -91,7 +91,7 @@ again:
 ```
 这里两个关键点需要注意：
 
-__(1) token值__：词法解析器解析到的token值内容就是token值，这些值统一通过__zval__存储，上面的过程中可以看到调用lex_scan参数是是个zval*，在具体的命中规则总会将解析到的token保存到这个值，从而传递给语法解析器使用，比如PHP中的解析变量的规则：`$a;`，其词法解析规则为：
+__(1) token值__：词法解析器解析到的token值内容就是token值，这些值统一通过 __zval__ 存储，上面的过程中可以看到调用lex_scan参数是是个zval*，在具体的命中规则总会将解析到的token保存到这个值，从而传递给语法解析器使用，比如PHP中的解析变量的规则：`$a;`，其词法解析规则为：
 ```c
 <ST_IN_SCRIPTING,ST_DOUBLE_QUOTES,ST_HEREDOC,ST_BACKQUOTE,ST_VAR_OFFSET>"$"{LABEL} {
     //将匹配到的token值保存在zval中
@@ -101,7 +101,7 @@ __(1) token值__：词法解析器解析到的token值内容就是token值，这
 ```
 zendlval就是我们传入的zval*，yytext指向命中的token值起始位置，yyleng为token值的长度。
 
-__(2) 语义值类型__：bison调用re2c分割token有两个含义，第一个是token类型，另一个是token值，token类型一般以yylex的返回值告诉bison，而token值就是语义值，这个值一般定义为固定的类型，这个类型就是语义值类型，默认为int，可以通过__YYSTYPE__定义，而PHP中这个类型是__zend_parser_stack_elem__，这就是为什么zendlex的参数为zend_parser_stack_elem的原因。
+__(2) 语义值类型__：bison调用re2c分割token有两个含义，第一个是token类型，另一个是token值，token类型一般以yylex的返回值告诉bison，而token值就是语义值，这个值一般定义为固定的类型，这个类型就是语义值类型，默认为int，可以通过 __YYSTYPE__ 定义，而PHP中这个类型是 __zend_parser_stack_elem__ ，这就是为什么zendlex的参数为`zend_parser_stack_elem`的原因。
 ```c
 #define YYSTYPE zend_parser_stack_elem
 
@@ -111,7 +111,7 @@ typedef union _zend_parser_stack_elem {
     zend_ulong num;
 } zend_parser_stack_elem;
 ```
-实际这是个union，ast类型用的比较多(其它两种类型暂时没发现有地方在用)，这样可以通过%token、%type将对应的值修改为elem.ast，所以在zend_language_parser.y中使用的$$、$1、$2......多数都是__zend_parser_stack_elem.ast__：
+实际这是个union，ast类型用的比较多(其它两种类型暂时没发现有地方在用)，这样可以通过%token、%type将对应的值修改为elem.ast，所以在zend_language_parser.y中使用的$$、$1、$2......多数都是 __zend_parser_stack_elem.ast__ ：
 ```c
 %token <ast> T_LNUMBER   "integer number (T_LNUMBER)"
 %token <ast> T_DNUMBER   "floating-point number (T_DNUMBER)"
@@ -123,7 +123,7 @@ typedef union _zend_parser_stack_elem {
 %type <ast> interface_declaration_statement interface_extends_list
 ```
 
-语法解析器从start开始调用，然后层层匹配各个规则，语法解析器根据命中的语法规则创建AST节点，最后将生成的AST根节点赋到__CG(ast)__：
+语法解析器从start开始调用，然后层层匹配各个规则，语法解析器根据命中的语法规则创建AST节点，最后将生成的AST根节点赋到 __CG(ast)__ ：
 ```c
 %% /* Rules */
 
@@ -191,4 +191,4 @@ echo $a,$b;
 
 __总结：__
 
-这一节我们主要介绍了PHP词法、语法解析生成抽象语法树(AST)的过程，此过程是PHP语法实现的基础，也是zend引擎非常关键的一部分，后续介绍的内容都是基于此过程的产出结果展开的。这部分内容关键在于对re2c、bison的应用上，如果是初次接触它们可能不太容易理解，这里不再对re2c、bison作更多解释，想要了解更多的推荐看下__《flex与bison》__这本书。
+这一节我们主要介绍了PHP词法、语法解析生成抽象语法树(AST)的过程，此过程是PHP语法实现的基础，也是zend引擎非常关键的一部分，后续介绍的内容都是基于此过程的产出结果展开的。这部分内容关键在于对re2c、bison的应用上，如果是初次接触它们可能不太容易理解，这里不再对re2c、bison作更多解释，想要了解更多的推荐看下 __《flex与bison》__ 这本书。
