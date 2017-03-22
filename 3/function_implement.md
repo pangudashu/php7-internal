@@ -61,6 +61,20 @@ union _zend_function {
 PHP在编译阶段将用户自定义的函数编译为独立的opcodes，保存在`EG(function_table)`中，调用时重新分配新的zend_execute_data(相当于运行栈)，然后执行函数的opcodes，调用完再还原到旧的`zend_execute_data`，继续执行，关于zend引擎execute阶段后面会详细分析。
 
 #### 3.2.1.2 函数参数
+函数参数在内核实现上与函数内的局部变量实际是一样的，上一篇我们介绍编译的时候提供局部变量会有一个单独的 __编号__ ，而函数的参数与之相同，参数名称也在zend_op_array.vars中，编号首先是从参数开始的，所以按照参数顺序其编号依次为0、1、2...(转化为相对内存偏移量就是96、112、128...)，然后函数调用时首先会在调用位置将参数的value复制到各参数各自的位置，详细的传参过程我们在执行一篇再作说明。
+
+另外参数还有其它的信息，比如默认值、引用传递，这些信息通过`zend_arg_info`结构记录：
+```c
+typedef struct _zend_arg_info {
+    zend_string *name; //函数名
+    zend_string *class_name;
+    zend_uchar type_hint; //显式声明的参数类型，比如(array $param_1)
+    zend_uchar pass_by_reference; //是否引用传参，参数前加&的这个值就是1
+    zend_bool allow_null; //是否允许为空
+    zend_bool is_variadic; //是否为可变参数，即...用法，与golang的用法相同，5.6以上新增的一个用法
+} zend_arg_info;
+```
+每个参数都有一个上面的结构，所有参数的结构保存在`zend_op_array.arg_info`数组中。
 
 #### 3.2.1.3 函数的编译
 
