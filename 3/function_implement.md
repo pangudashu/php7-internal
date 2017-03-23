@@ -135,6 +135,58 @@ typedef struct _zend_ast_decl {
 
 ![](../img/ast_function.png)
 
+具体编译为opcodes的过程在`zend_compile_func_decl()`中：
+```c
+void zend_compile_func_decl(znode *result, zend_ast *ast)
+{
+    zend_ast_decl *decl = (zend_ast_decl *) ast;
+    zend_ast *params_ast = decl->child[0]; //参数列表
+    zend_ast *uses_ast = decl->child[1]; //use列表
+    zend_ast *stmt_ast = decl->child[2]; //函数内部
+    zend_ast *return_type_ast = decl->child[3]; //返回值类型
+    zend_bool is_method = decl->kind == ZEND_AST_METHOD; //是否为成员函数
+
+    //这里保存当前正在编译的zend_op_array：CG(active_op_array)，然后重新为函数生成一个新的zend_op_array，
+    //函数编译完再将旧的还原
+    zend_op_array *orig_op_array = CG(active_op_array);
+    zend_op_array *op_array = zend_arena_alloc(&CG(arena), sizeof(zend_op_array)); //新分配zend_op_array
+    ...
+
+    zend_compile_params(params_ast, return_type_ast); //编译参数
+    if (uses_ast) {
+        zend_compile_closure_uses(uses_ast); 
+    }
+    zend_compile_stmt(stmt_ast); //编译函数内部语法
+    ...
+    pass_two(CG(active_op_array));
+    ...
+    CG(active_op_array) = orig_op_array; //还原之前的
+}
+```
+> __编译过程主要有这么几个处理：__
+
+> (1)保存当前正在编译的zend_op_array，新分配一个结构，因为每个函数、include的文件都对应独立的一个zend_op_array，通过CG(active_op_array)记录当前编译所属zend_op_array，所以开始编译函数时就需要将这个值保存下来，等到函数编译完成再还原回去；
+
+```php
+$a = 123;  //当前为CG(active_op_array) = zend_op_array_1，编译到这时此opcode加到zend_op_array_1
+
+//新分配一个zend_op_array_2，并将当前CG(active_op_array)保存到origin_op_array，
+//然后将CG(active_op_array)=zend_op_array_2
+function test(){
+    $b = 234; //编译到zend_op_array_2
+}//函数编译结束，将CG(active_op_array) = origin_op_array，切回zend_op_array_1
+$c = 345; //编译到zend_op_array_1
+```
+> (2)编译参数列表，函数的参数我们在上一小节已经介绍，完整的参数会有三个组成：参数类型(可选)、参数名、默认值(可选)，这三部分分别保存在参数节点的三个child节点中，编译参数的过程有两个关键操作：
+
+>> 操作1：为每个参数编号
+
+>> 操作2：每个参数生成一条opcode，如果是可变参数其opcode=ZEND_RECV_VARIADIC，如果有默认值则为ZEND_RECV_INIT，否则为ZEND_RECV
+
+> 上面的例子中$a编号为96，$b为112，同时生成了两条opcode：ZEND_RECV、ZEND_RECV_INIT，调用的时候会根据具体传参数量跳过部分opcode，比如这个函数我们这么调用`my_function($a)`则ZEND_RECV这条opcode就直接跳过了，然后执行ZEND_RECV_INIT将默认值写到112位置，具体的编译过程在`zend_compile_params()`中，这里不再展开。
+
+> (3)编译函数内部语法，这个跟普通PHP代码编译过程无异。
+
 ### 3.2.2 内部函数
 上一节已经提过，内部函数指的是由内核、扩展提供的C语言编写的function，这类函数不需要经历opcode的编译过程，所以效率上要高于PHP用户自定义的函数，调用时与普通的C程序没有差异。
 
