@@ -236,7 +236,9 @@ function my_function($a){
 ```
 实际原始的opcode以及执行顺序：
 
-![](function_dec.png)
+![](../img/function_dec.png)
+
+类的情况也是如此，后面我们再作说明。
 
 ### 3.2.2 内部函数
 上一节已经提过，内部函数指的是由内核、扩展提供的C语言编写的function，这类函数不需要经历opcode的编译过程，所以效率上要高于PHP用户自定义的函数，调用时与普通的C程序没有差异。
