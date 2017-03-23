@@ -151,6 +151,15 @@ void zend_compile_func_decl(znode *result, zend_ast *ast)
     zend_op_array *orig_op_array = CG(active_op_array);
     zend_op_array *op_array = zend_arena_alloc(&CG(arena), sizeof(zend_op_array)); //新分配zend_op_array
     ...
+    
+    if (is_method) {
+        zend_bool has_body = stmt_ast != NULL;
+        zend_begin_method_decl(op_array, decl->name, has_body);
+    } else {
+        zend_begin_func_decl(result, op_array, decl); //注意这里会在当前zend_op_array（不是新生成的函数那个）生成一条ZEND_DECLARE_FUNCTION的opcode
+    }
+    CG(active_op_array) = op_array;
+    ...
 
     zend_compile_params(params_ast, return_type_ast); //编译参数
     if (uses_ast) {
@@ -165,7 +174,7 @@ void zend_compile_func_decl(znode *result, zend_ast *ast)
 ```
 > __编译过程主要有这么几个处理：__
 
-> (1)保存当前正在编译的zend_op_array，新分配一个结构，因为每个函数、include的文件都对应独立的一个zend_op_array，通过CG(active_op_array)记录当前编译所属zend_op_array，所以开始编译函数时就需要将这个值保存下来，等到函数编译完成再还原回去；
+> __(1)__ 保存当前正在编译的zend_op_array，新分配一个结构，因为每个函数、include的文件都对应独立的一个zend_op_array，通过CG(active_op_array)记录当前编译所属zend_op_array，所以开始编译函数时就需要将这个值保存下来，等到函数编译完成再还原回去；另外还有一个关键操作：`zend_begin_func_decl`，这里会在当前zend_op_array（不是新生成的函数那个）生成一条 __ZEND_DECLARE_FUNCTION__ 的opcode，也就是函数声明操作。
 
 ```php
 $a = 123;  //当前为CG(active_op_array) = zend_op_array_1，编译到这时此opcode加到zend_op_array_1
@@ -177,15 +186,57 @@ function test(){
 }//函数编译结束，将CG(active_op_array) = origin_op_array，切回zend_op_array_1
 $c = 345; //编译到zend_op_array_1
 ```
-> (2)编译参数列表，函数的参数我们在上一小节已经介绍，完整的参数会有三个组成：参数类型(可选)、参数名、默认值(可选)，这三部分分别保存在参数节点的三个child节点中，编译参数的过程有两个关键操作：
+> __(2)__ 编译参数列表，函数的参数我们在上一小节已经介绍，完整的参数会有三个组成：参数类型(可选)、参数名、默认值(可选)，这三部分分别保存在参数节点的三个child节点中，编译参数的过程有两个关键操作：
 
->> 操作1：为每个参数编号
+>> __操作1：__ 为每个参数编号
 
->> 操作2：每个参数生成一条opcode，如果是可变参数其opcode=ZEND_RECV_VARIADIC，如果有默认值则为ZEND_RECV_INIT，否则为ZEND_RECV
+>> __操作2：__ 每个参数生成一条opcode，如果是可变参数其opcode=ZEND_RECV_VARIADIC，如果有默认值则为ZEND_RECV_INIT，否则为ZEND_RECV
 
 > 上面的例子中$a编号为96，$b为112，同时生成了两条opcode：ZEND_RECV、ZEND_RECV_INIT，调用的时候会根据具体传参数量跳过部分opcode，比如这个函数我们这么调用`my_function($a)`则ZEND_RECV这条opcode就直接跳过了，然后执行ZEND_RECV_INIT将默认值写到112位置，具体的编译过程在`zend_compile_params()`中，这里不再展开。
 
-> (3)编译函数内部语法，这个跟普通PHP代码编译过程无异。
+> __(3)__ 编译函数内部语法，这个跟普通PHP代码编译过程无异。
+
+> __(4)__ pass_two()，上一篇介绍过，不再赘述。
+
+最终生成两个zend_op_array：
+
+![](../img/ast_function_op.png)
+
+总体来看，PHP在逐行编译时发现一个function则生成一条ZEND_DECLARE_FUNCTION的opcode，然后调到函数中编译函数，编译完再跳回去继续下面的编译，这里多次提到ZEND_DECLARE_FUNCTION这个opcode是因为在函数编译结束后还有一个重要操作：`zend_do_early_binding()`，前面我们说过总的编译入口在`zend_compile_top_stmt()`，这里会对每条语法逐条编译，而函数、类在编译完成后还有后续的操作：
+
+```c
+void zend_compile_top_stmt(zend_ast *ast)
+{
+    ...
+    if (ast->kind == ZEND_AST_STMT_LIST) {
+        for (i = 0; i < list->children; ++i) {
+            zend_compile_top_stmt(list->child[i]);
+        }
+    }
+
+    zend_compile_stmt(ast); //编译各条语法，函数也是在这里编译完成
+
+    //函数编译完成后
+    if (ast->kind == ZEND_AST_FUNC_DECL || ast->kind == ZEND_AST_CLASS) {
+        CG(zend_lineno) = ((zend_ast_decl *) ast)->end_lineno;
+        zend_do_early_binding();
+    }
+}
+```
+`zend_do_early_binding()`核心工作就是 __将function、class加到CG(function_table)、CG(class_table)中__ ，加入成功了就直接把 __ZEND_DECLARE_FUNCTION__ 这条opcode干掉了，加入失败的话则保留，这个相当于 __有一部分opcode在『编译时』提前执行了__ ，这也是为什么PHP中可以先调用函数再声明函数的原因，比如：
+```php
+
+$a = 1234;
+
+echo my_function($a);
+
+function my_function($a){
+    ...
+}
+```
+实际原始的opcode以及执行顺序：
+
+![](function_dec.png)
 
 ### 3.2.2 内部函数
 上一节已经提过，内部函数指的是由内核、扩展提供的C语言编写的function，这类函数不需要经历opcode的编译过程，所以效率上要高于PHP用户自定义的函数，调用时与普通的C程序没有差异。
