@@ -158,12 +158,14 @@ echo my_class::A1;
 ```
 唯一的不同就是常量的使用时机：示例1是在定义前使用的，示例2是在定义后使用的。我们都知道PHP变量无需提前声明，这俩会有什么不同呢？
 
-事实上这两种情况内核会有两种不同的处理方式，示例2这种情况的处理与我们上面的猜测相同，而示例1则有另外一种处理方式：PHP代码的编译是顺序的，示例1的情况编译到`echo my_class::A1`这行时首先会尝试检索下是否已经编译了my_class，如果能在CG(class_table)中找到，则进一步从类的`contants_table`查找对应的常量，找到的话则会复制其value替换常量，简单的讲就是类似C语言中的宏，__编译时替换为实际的值了__，而不是在运行时再去检索。
+事实上这两种情况内核会有两种不同的处理方式，示例1这种情况的处理与我们上面的猜测相同，而示例2则有另外一种处理方式：PHP代码的编译是顺序的，示例2的情况编译到`echo my_class::A1`这行时首先会尝试检索下是否已经编译了my_class，如果能在CG(class_table)中找到，则进一步从类的`contants_table`查找对应的常量，找到的话则会复制其value替换常量，简单的讲就是类似C语言中的宏，__编译时替换为实际的值了__，而不是在运行时再去检索。
 
 具体debug下上面两个例子会发现示例2的主要的opcode只有一个ZEND_ECHO，也就是直接输出值了，并没有设计类常量的查找，这就是因为编译的时候已经将 __my_class::A1__ 替换为 __hi__ 了，`echo my_class::A1;`等同于：`echo "hi";`；而示例1首先的操作则是ZEND_FETCH_CONSTANT，查找常量，接着才是ZEND_ECHO。
 
 #### 3.4.1.3 成员属性
 类的变量成员叫做“属性”。属性声明是由关键字 __public__，__protected__ 或者 __private__ 开头，然后跟一个普通的变量声明来组成，关于这三个关键字这里不作讨论，后面分析可见性的章节再作说明。
+
+> 【修饰符(public/private/protected/static)】【成员属性名】= 【属性默认值】;
 
 属性中的变量可以初始化，但是初始化的值必须是常数，这里的常数是指 PHP 脚本在编译阶段时就可以得到其值，而不依赖于运行时的信息才能求值，比如`public $time = time();`这样定义一个属性就会触发语法错误。
 
@@ -184,7 +186,7 @@ class my_class {
 
 看到这里可能有个疑问：使用时成员属性是如果找到的呢？
 
-实际只是成员属性的 __VALUE__ 通过数组存储的，访问时仍然是根据以"属性名"为索引的散列表查找具体VALUE的，这个散列表并没有按照普通属性、静态属性分为两个，而是只用了一个：__HashTable properties_info__ 。此哈希表存储元素的value类型为__zend_property_info__ 。
+实际只是成员属性的 __VALUE__ 通过数组存储的，访问时仍然是根据以"属性名"为索引的散列表查找具体VALUE的，这个散列表并没有按照普通属性、静态属性分为两个，而是只用了一个：__HashTable properties_info__ 。此哈希表存储元素的value类型为 __zend_property_info__ 。
 
 ```c
 typedef struct _zend_property_info {
@@ -203,7 +205,7 @@ typedef struct _zend_property_info {
 
 #define ZEND_ACC_STATIC         0x01
 ```
-* __offset__：这个值记录的就是上面说的通过数组保存的属性值的索引，也就是说属性值保存在一个数组中，然后将其在数组中的位置保存在offset中，另外需要说明的一点的是普通属性、静态属性这个值用法是不一样的，静态属性是类的范畴，与对象无关，所以其offset为default_static_members_table数组的下标：0,、1、2......，而普通属性归属于对象，每个对象有其各自的属性，所以这个offset记录的实际是各属性在object中偏移值(在后面《3.4.2 对象》一节我们再具体说明普通属性的存储方式)，其值是：40、56、72......是按照zval的内存大小偏移的
+* __offset__：这个值记录的就是上面说的通过数组保存的属性值的索引，也就是说属性值保存在一个数组中，然后将其在数组中的位置保存在offset中，另外需要说明的一点的是普通属性、静态属性这个值用法是不一样的，静态属性是类的范畴，与对象无关，所以其offset为default_static_members_table数组的下标：0,、1、2......，而普通属性归属于对象，每个对象有其各自的属性，所以这个offset记录的实际是 __各属性在object中偏移值__ (在后面《3.4.2 对象》一节我们再具体说明普通属性的存储方式)，其值是：40、56、72......是按照zval的内存大小偏移的
 * __flags__：bit位，标识的是属性的信息，如public、private、protected及是否为静态属性
 
 所以访问成员属性时首先是根据属性名查找到此属性的存储位置，然后再进一步获取属性值。
@@ -230,6 +232,9 @@ class my_class {
 
 ![zend_class_function](../img/zend_class_function.png)
 
+> 成员方法的定义：
+> 【修饰符(public/private/protected/static/abstruct/final)】function 【&】【成员方法名】(【参数列表】)【返回值类型】{【成员方法】};
+
 成员方法也有静态、非静态之分，静态方法中不能使用$this，因为其操作的作用域全部都是类的而不是对象的，而非静态方法中可以通过$this访问属于本对象的成员属性。
 
 静态方法也是通过static关键词定义：
@@ -250,4 +255,68 @@ my_class::$method();
 静态方法中调用其它静态方法或静态变量可以通过 __self__ 访问。
 
 成员方法的调用与普通function过程基本相同，根据对象所属类或直接根据类取到method的zend_function，然后执行，具体的过程[《3.3 Zend引擎执行过程》](zend_executor.md)已经详细说过，这里不再重复。
+
+#### 3.4.1.5 类的编译
+前面我们先介绍了类的相关组成部分，接下来我们从一个例子简单看下类的编译过程。
+
+```php
+//示例
+class Human {
+    public $aa = array(1,2,3);
+}
+
+class User extends Human
+{
+    const type = 110;
+
+    static $name = "uuu";
+    public $uid = 900;
+    public $sex = 'w';
+
+    public function __construct(){
+    }
+
+    public function getName(){
+        return $this->name;
+    }
+}
+```
+类的定义组成部分：
+
+【修饰符(abstract/final)】 class 【类名】 【extends 父类】 【implements 接口1,接口2】 {}
+
+语法规则为：
+```c
+class_declaration_statement:
+        class_modifiers T_CLASS { $<num>$ = CG(zend_lineno); }
+        T_STRING extends_from implements_list backup_doc_comment '{' class_statement_list '}'
+            { $$ = zend_ast_create_decl(ZEND_AST_CLASS, $1, $<num>3, $7, zend_ast_get_str($4), $5, $6, $9, NULL); }
+    |   T_CLASS { $<num>$ = CG(zend_lineno); }
+        T_STRING extends_from implements_list backup_doc_comment '{' class_statement_list '}'
+            { $$ = zend_ast_create_decl(ZEND_AST_CLASS, 0, $<num>2, $6, zend_ast_get_str($3), $4, $5, $8, NULL); }
+;
+
+//整个类内为list，每个成员属性、成员方法都是一个子节点
+class_statement_list:
+        class_statement_list class_statement
+            { $$ = zend_ast_list_add($1, $2); }
+    |   /* empty */
+            { $$ = zend_ast_create_list(0, ZEND_AST_STMT_LIST); }
+;
+
+//类内语法规则：成员属性、成员方法
+class_statement:
+        variable_modifiers property_list ';'
+            { $$ = $2; $$->attr = $1; }
+    |   T_CONST class_const_list ';'
+            { $$ = $2; RESET_DOC_COMMENT(); }
+    |   T_USE name_list trait_adaptations
+            { $$ = zend_ast_create(ZEND_AST_USE_TRAIT, $2, $3); }
+    |   method_modifiers function returns_ref identifier backup_doc_comment '(' parameter_list ')'
+        return_type method_body
+            { $$ = zend_ast_create_decl(ZEND_AST_METHOD, $3 | $1, $2, $5,
+                  zend_ast_get_str($4), $7, NULL, $10, $9); }
+;
+```
+
 
