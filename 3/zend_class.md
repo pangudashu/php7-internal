@@ -233,6 +233,7 @@ class my_class {
 ![zend_class_function](../img/zend_class_function.png)
 
 > 成员方法的定义：
+
 > 【修饰符(public/private/protected/static/abstruct/final)】function 【&】【成员方法名】(【参数列表】)【返回值类型】{【成员方法】};
 
 成员方法也有静态、非静态之分，静态方法中不能使用$this，因为其操作的作用域全部都是类的而不是对象的，而非静态方法中可以通过$this访问属于本对象的成员属性。
@@ -257,7 +258,7 @@ my_class::$method();
 成员方法的调用与普通function过程基本相同，根据对象所属类或直接根据类取到method的zend_function，然后执行，具体的过程[《3.3 Zend引擎执行过程》](zend_executor.md)已经详细说过，这里不再重复。
 
 #### 3.4.1.5 类的编译
-前面我们先介绍了类的相关组成部分，接下来我们从一个例子简单看下类的编译过程。
+前面我们先介绍了类的相关组成部分，接下来我们从一个例子简单看下类的编译过程，这个过程最终的产物就是zend_class_entry。
 
 ```php
 //示例
@@ -281,9 +282,9 @@ class User extends Human
     }
 }
 ```
-类的定义组成部分：
+> 类的定义组成部分：
 
-【修饰符(abstract/final)】 class 【类名】 【extends 父类】 【implements 接口1,接口2】 {}
+> 【修饰符(abstract/final)】 class 【类名】 【extends 父类】 【implements 接口1,接口2】 {}
 
 语法规则为：
 ```c
@@ -318,5 +319,68 @@ class_statement:
                   zend_ast_get_str($4), $7, NULL, $10, $9); }
 ;
 ```
+生成的抽象语法树：
 
+![](../img/ast_class.png)
+
+类的语法树根节点为ZEND_AST_CLASS，此节点有3个子节点：继承子节点、实现接口子节点、类中声明表达式节点，其中child[2](即类中声明表达式节点)为zend_ast_list，每个常量定义、成员属性、成员方法对应一个节点，比如上面的例子中user类有6个子节点，这些子节点类型有3类：常量声明(ZEND_AST_CLASS_CONST_DECL)、属性声明(ZEND_AST_PROP_DECL)、方法声明(ZEND_AST_METHOD)。
+
+编译为opcodes操作为：`zend_compile_class_decl()`，它的输入就是ZEND_AST_CLASS节点，这个函数中再针对常量、属性、方法、继承、接口等分别处理。
+```c
+void zend_compile_class_decl(zend_ast *ast)
+{
+    zend_ast_decl *decl = (zend_ast_decl *) ast;
+    zend_ast *extends_ast = decl->child[0]; //继承类节点，zen_ast_zval节点，存的是父类名
+    zend_ast *implements_ast = decl->child[1]; //实现接口节点
+    zend_ast *stmt_ast = decl->child[2]; //类中声明的常量、属性、方法
+    zend_string *name, *lcname;
+    zend_class_entry *ce = zend_arena_alloc(&CG(arena), sizeof(zend_class_entry));
+    zend_op *opline;
+    ...
+
+    lcname = zend_new_interned_string(lcname);
+
+    ce->type = ZEND_USER_CLASS; //类型为用户自定义类
+    ce->name = name; //类名
+    zend_initialize_class_data(ce, 1);
+    ...
+    if (extends_ast) {
+        ...
+        zend_compile_class_ref(&extends_node, extends_ast, 0);
+    }
+
+    //在当前父空间生成一条opcode
+    opline = get_next_op(CG(active_op_array));
+    zend_make_var_result(&declare_node, opline);
+    ...
+    opline->op2_type = IS_CONST;
+    LITERAL_STR(opline->op2, lcname);
+    
+    if (decl->flags & ZEND_ACC_ANON_CLASS) {
+        //暂不清楚这种情况
+    }else{
+        zend_string *key;
+
+        if (extends_ast) {
+            opline->opcode = ZEND_DECLARE_INHERITED_CLASS; //有继承的类为这个opcode
+            opline->extended_value = extends_node.u.op.var;
+        } else {
+            opline->opcode = ZEND_DECLARE_CLASS; //无继承的类为这个opcode
+        }
+
+        key = zend_build_runtime_definition_key(lcname, decl->lex_pos); //这个key并不是类名，而是：类名+file+lex_pos
+
+        opline->op1_type = IS_CONST;
+        LITERAL_STR(opline->op1, key);//将这个临时key保存到操作数1中
+
+        zend_hash_update_ptr(CG(class_table), key, ce); //将半成品的zend_class_entry插入CG(class_table)，注意这里并不是执行时用于索引类的，它的key不是类名!!!
+    }
+    CG(active_class_entry) = ce;
+    zend_compile_stmt(stmt_ast);
+
+    ...
+
+    CG(active_class_entry) = original_ce;
+}
+```
 
