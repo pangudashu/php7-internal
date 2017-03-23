@@ -376,11 +376,95 @@ void zend_compile_class_decl(zend_ast *ast)
         zend_hash_update_ptr(CG(class_table), key, ce); //将半成品的zend_class_entry插入CG(class_table)，注意这里并不是执行时用于索引类的，它的key不是类名!!!
     }
     CG(active_class_entry) = ce;
-    zend_compile_stmt(stmt_ast);
+    zend_compile_stmt(stmt_ast); //将常量、成员属性、方法编译到CG(active_class_entry)中
 
     ...
 
     CG(active_class_entry) = original_ce;
 }
 ```
+上面这个过程主要操作是新分配一个zend_class_entry，如果有继承的话首先生成一条ZEND_FETCH_CLASS的opcode，然后生成一条类声明的opcode（这个地方与之前3.2.1.3节介绍函数的编译时相同），接着就是编译常量、属性、成员方法到新分配的zend_class_entry中，这个过程还有一个容易误解的地方：将生成的zend_class_entry插入到CG(class_table)哈希表中，这个操作这是中间步骤，它的key并不是类名，而是类名后面带来一长串其它的字符，也就是这个时候通过类名在class_table是索引不到对应类的，后面我们会说明这样处理的作用。
+
+Human类情况比较简单，不再展开，我们看下User类在`zend_compile_class_decl()`中执行到`zend_compile_stmt(stmt_ast)`这步时关键数据结构：
+
+![](../img/zend_class_init.png)
+
+接下来我们分别看下常量、成员属性、方法的编译过程。
+
+__(1)常量编译__
+
+常量的节点类型为：`ZEND_AST_CLASS_CONST_DECL`，每个常量对应一个这样的节点，处理函数为:`zend_compile_class_const_decl()`：
+```c
+void zend_compile_class_const_decl(zend_ast *ast)
+{
+    zend_ast_list *list = zend_ast_get_list(ast);
+    zend_class_entry *ce = CG(active_class_entry);
+    uint32_t i;
+
+    for (i = 0; i < list->children; ++i) { //不清楚这个地方为什么要用list，试了几个例子这个节点都只有一个child，即for只循环一次
+        zend_ast *const_ast = list->child[i];
+        zend_ast *name_ast = const_ast->child[0]; //常量名节点
+        zend_ast *value_ast = const_ast->child[1];//常量值节点
+        zend_string *name = zend_ast_get_str(name_ast); //常量名
+        zval value_zv;
+        
+        //取出常量值
+        zend_const_expr_to_zval(&value_zv, value_ast);
+
+        name = zend_new_interned_string_safe(name);
+        //将常量添加到zend_class_entry.constants_table哈希表中
+        if (zend_hash_add(&ce->constants_table, name, &value_zv) == NULL) {
+            ...
+        }
+        ...
+    }
+}
+```
+__(2)属性编译__
+
+属性节点类型为:`ZEND_AST_PROP_DECL`，对应的处理函数:`zend_compile_prop_decl()`:
+```c
+void zend_compile_prop_decl(zend_ast *ast)
+{
+    zend_ast_list *list = zend_ast_get_list(ast);
+    uint32_t flags = list->attr; //属性修饰符：static、public、private、protected
+    zend_class_entry *ce = CG(active_class_entry);
+    uint32_t i, children = list->children;
+
+    //也不清楚这里为啥用循环，测试的情况child只有一个
+    for (i = 0; i < children; ++i) {
+        zend_ast *prop_ast = list->child[i]; //这个节点类型为：ZEND_AST_PROP_ELEM
+        zend_ast *name_ast = prop_ast->child[0]; //属性名节点
+        zend_ast *value_ast = prop_ast->child[1]; //属性值节点
+        zend_ast *doc_comment_ast = prop_ast->child[2];
+        zend_string *name = zend_ast_get_str(name_ast); //属性名
+        zend_string *doc_comment = NULL;
+        zval value_zv;
+        ...
+        //检查该属性是否在当前类中已经定义
+        if (zend_hash_exists(&ce->properties_info, name)) {
+            zend_error_noreturn(...);
+        }
+        if (value_ast) {
+            //取出默认值
+            zend_const_expr_to_zval(&value_zv, value_ast);
+        } else {
+            //默认值为null
+            ZVAL_NULL(&value_zv);
+        }
+
+        name = zend_new_interned_string_safe(name);
+        //保存属性
+        zend_declare_property_ex(ce, name, &value_zv, flags, doc_comment);
+    }
+}
+
+//zend_API.c
+ZEND_API int zend_declare_property_ex(zend_class_entry *ce, zend_string *name, zval *property, int access_type,...)
+{
+}
+```
+__(3)方法编译__
+
+
 
