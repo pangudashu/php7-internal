@@ -240,6 +240,32 @@ function my_function($a){
 
 类的情况也是如此，后面我们再作说明。
 
+#### 3.2.1.4 匿名函数
+匿名函数（Anonymous functions），也叫闭包函数（closures），允许临时创建一个没有指定名称的函数。最经常用作回调函数（callback）参数的值。当然，也有其它应用的情况。
+
+官网的示例：
+```php
+$greet = function($name)
+{
+    printf("Hello %s\r\n", $name);
+};
+
+$greet('World');
+$greet('PHP');
+```
+这里提函数函数只是想说明编译函数时那个use的用法:
+
+__匿名函数可以从父作用域中继承变量。 任何此类变量都应该用 use 语言结构传递进去。__
+
+```php
+$message = 'hello';
+
+$example = function () use ($message) {
+    var_dump($message);
+};
+$example();
+```
+
 ### 3.2.2 内部函数
 上一节已经提过，内部函数指的是由内核、扩展提供的C语言编写的function，这类函数不需要经历opcode的编译过程，所以效率上要高于PHP用户自定义的函数，调用时与普通的C程序没有差异。
 
