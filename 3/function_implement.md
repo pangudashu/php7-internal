@@ -99,9 +99,41 @@ typedef struct _zend_arg_info {
 每个参数都有一个上面的结构，所有参数的结构保存在`zend_op_array.arg_info`数组中。
 
 #### 3.2.1.3 函数的编译
-我们在上一篇文章介绍过PHP代码的编译过程，主要是PHP->AST->Opcodes的转化，上面也说了函数其实就是将一组PHP代码编译为单独的opcodes，函数的调用就是不同opcodes间的切换，所以函数的编译过程与普通PHP代码基本一致，只是会有一些特殊操作，我们从一个例子再简单看下编译过程。
+我们在上一篇文章介绍过PHP代码的编译过程，主要是PHP->AST->Opcodes的转化，上面也说了函数其实就是将一组PHP代码编译为单独的opcodes，函数的调用就是不同opcodes间的切换，所以函数的编译过程与普通PHP代码基本一致，只是会有一些特殊操作，我们以3.2.1.2开始那个例子简单看下编译过程。
 
-......
+普通函数的语法解析规则：
+```c
+function_declaration_statement:
+    function returns_ref T_STRING backup_doc_comment '(' parameter_list ')' return_type
+    '{' inner_statement_list '}'
+        { $$ = zend_ast_create_decl(ZEND_AST_FUNC_DECL, $2, $1, $4,
+            zend_ast_get_str($3), $6, NULL, $10, $8); }
+;
+```
+规则主要由五部分组成：
+* __returns_ref:__ 是否返回引用，在函数名前加&，比如function &test(){...}
+* __T_STRING:__ 函数名
+* __parameter_list:__ 参数列表
+* __return_type:__ 返回值类型
+* __inner_statement_list:__ 函数内部代码
+
+函数生成的抽象语法树根节点类型是zend_ast_decl，所有函数相关的信息都记录在这个节点中(除了函数外类也是用的这个)：
+```c
+typedef struct _zend_ast_decl {
+    zend_ast_kind kind; //函数就是ZEND_AST_FUNC_DECL，类则是ZEND_AST_CLASS
+    zend_ast_attr attr; /* Unused - for structure compatibility */
+    uint32_t start_lineno; //函数起始行
+    uint32_t end_lineno;  //函数结束行
+    uint32_t flags;   //其中一个标识位用来标识返回值是否为引用，是则为ZEND_ACC_RETURN_REFERENCE
+    unsigned char *lex_pos;
+    zend_string *doc_comment;
+    zend_string *name;  //函数名
+    zend_ast *child[4]; //child有4个子节点，分别是：参数列表节点、use列表节点、函数内部表达式节点、返回值类型节点
+} zend_ast_decl;
+```
+上面的例子最终生成的语法树：
+
+![](../img/ast_function.png)
 
 ### 3.2.2 内部函数
 上一节已经提过，内部函数指的是由内核、扩展提供的C语言编写的function，这类函数不需要经历opcode的编译过程，所以效率上要高于PHP用户自定义的函数，调用时与普通的C程序没有差异。
