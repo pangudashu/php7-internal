@@ -346,6 +346,7 @@ void zend_compile_class_decl(zend_ast *ast)
     ...
     if (extends_ast) {
         ...
+        //有继承的父类则首先生成一条ZEND_FETCH_CLASS的opcode
         zend_compile_class_ref(&extends_node, extends_ast, 0);
     }
 
@@ -500,9 +501,184 @@ ZEND_API int zend_declare_property_ex(zend_class_entry *ce, zend_string *name, z
     ...
 }
 ```
-这个操作中重点是offset的计算方式，静态属性这个比较好理解，就是default_static_members_table数组索引；非静态属性zend_class_entry.default_properties_table保存的只是默认属性值，我们在下>一篇介绍对象时再具体说明object、class之间属性的存储关系。
+这个操作中重点是offset的计算方式，静态属性这个比较好理解，就是default_static_members_table数组索引；非静态属性zend_class_entry.default_properties_table保存的只是默认属性值，我们在下一篇介绍对象时再具体说明object、class之间属性的存储关系。
 
-__(3)方法编译__
+__(3)成员方法编译__
+3.4.1.4一节已经介绍过成员方法与普通函数的关系，两者没有很大的区别，实现上是相同，不同的地方在于成员方法保存在各zend_class_entry中，调用时会有一些可见性方面的限制，如private、public、protected，还有一些专有用法，比如this、self等，但在编译、执行、存储结构等方面两者基本是一致的。
 
+成员方法的语法树根节点为`ZEND_AST_METHOD`：
+```c
+void zend_compile_stmt(zend_ast *ast)
+{
+    ...
+    switch (ast->kind) {
+        ...
+        case ZEND_AST_FUNC_DECL: //函数
+        case ZEND_AST_METHOD:  //成员方法
+            zend_compile_func_decl(NULL, ast);
+            break;
+        ...
+    }
+}
+```
+如果你还记得3.2.1.3函数处理的过程就会发现函数、成员方法的编译是同一个函数：`zend_compile_func_decl()`。
+```c
+void zend_compile_func_decl(znode *result, zend_ast *ast)
+{
+    //参数、函数内语法编译等不看了，与函数的相同，不清楚请看3.2.1.3节
+    ...
+
+    if (is_method) {
+        zend_bool has_body = stmt_ast != NULL;
+        zend_begin_method_decl(op_array, decl->name, has_body);
+    } else {
+        //函数是在当前空间生成了一条ZEND_DECLARE_FUNCTION的opcode
+        //然后在zend_do_early_binding()中"执行"了这条opcode，即将函数添加到CG(function_table)
+        zend_begin_func_decl(result, op_array, decl);
+    }
+    ...
+}
+```
+这个过程之前已经说过，这里不再重复，我们只看下与普通函数处理不同的地方：`zend_begin_method_decl()`，它的工作也比较简单，最重要的一个地方就是将成员方法的zend_op_array插入 __zend_class_entry.function_table__。
+```c
+void zend_begin_method_decl(zend_op_array *op_array, zend_string *name, zend_bool has_body)
+{
+    zend_class_entry *ce = CG(active_class_entry);
+    ...
+
+    op_array->scope = ce;
+    op_array->function_name = zend_string_copy(name);
+
+    lcname = zend_string_tolower(name);
+    lcname = zend_new_interned_string(lcname);
+
+    //插入类的function_table中
+    if (zend_hash_add_ptr(&ce->function_table, lcname, op_array) == NULL) {
+        zend_error_noreturn(..);
+    }
+    
+    //后面主要是设置一些构造函数、析构函数、魔法函数指针，以及其它一些可见性、静态非静态的检查
+    ...
+}
+```
+
+上面我们分别介绍了常量、成员属性、方法的编译过程，最后再用一张图总结下整个类的编译过程：
+
+![](../img/zend_ast_class.png)
+
+图中还有一步我们没有说到：__zend_do_early_binding()__ ，这是非常关键的一步，如果你看过3.2.1.3一节那么对这个函数应该不陌生，没错，在函数编译的最后一步也会调用这个函数，它的作用是将编译的function以函数名为key添加到CG(function_table)中，同样地上面整个过程中你可能发现所有的操作都是针对zend_class_entry，并没有发现最后把它存到什么位置了，这最后的一步就是把zend_class_entry以类名为key添加到CG(class_table)。
+
+```c
+void zend_do_early_binding(void)
+{
+    ...
+    switch (opline->opcode) {
+        ...
+        case ZEND_DECLARE_CLASS:
+            if (do_bind_class(CG(active_op_array), opline, CG(class_table), 1) == NULL) {
+                return;
+            }
+            table = CG(class_table);
+            break;
+        case ZEND_DECLARE_INHERITED_CLASS:
+            //比较长，后面单独摘出来
+            break;
+    }
+
+    //将那个以(类名+file+lex_pos)为key的值从CG(class_table)中删除
+    //同时删除两个相关的literals：key、类名
+    zend_hash_del(table, Z_STR_P(CT_CONSTANT(opline->op1)));
+    zend_del_literal(CG(active_op_array), opline->op1.constant);
+    zend_del_literal(CG(active_op_array), opline->op2.constant);
+    MAKE_NOP(opline); //将ZEND_DECLARE_CLASS或ZEND_DECLARE_INHERITED_CLASS的opcode置为空，表示已执行
+}
+```
+这个地方会有两种情况，上面我们说过，如果是普通的没有继承的类定义会生成一条`ZEND_DECLARE_CLASS`的opcode，而有继承的类则会生成`ZEND_FETCH_CLASS`、`ZEND_DECLARE_INHERITED_CLASS`两条opcode，这两种有很大的不同，接下来我们具体看下：
+
+> __(1)无继承类：__ 这种情况直接调用`do_bind_class()`处理了。
+```c
+ZEND_API zend_class_entry *do_bind_class(
+    const zend_op_array* op_array, 
+    const zend_op *opline, 
+    HashTable *class_table, 
+    zend_bool compile_time)
+{
+    if (compile_time) { //编译时
+        //还记得zend_compile_class_decl()中有一个把zend_class_entry以(类名+file+lex_pos)
+        //为key存入CG(class_table)的操作吗？那个key的存储位置保存在op1中了
+        //这里就是从op_array.literals中取出那个key
+        op1 = CT_CONSTANT_EX(op_array, opline->op1.constant);
+        //op2为类名
+        op2 = CT_CONSTANT_EX(op_array, opline->op2.constant);
+    } else { //运行时，如果当前类在编译阶段没有编译完成则也有可能在zend_execute执行阶段完成
+        op1 = RT_CONSTANT(op_array, opline->op1);
+        op2 = RT_CONSTANT(op_array, opline->op2);
+    }
+    //从CG(class_table)中取出zend_class_entry
+    if ((ce = zend_hash_find_ptr(class_table, Z_STR_P(op1))) == NULL) {
+        zend_error_noreturn(E_COMPILE_ERROR, ...);
+        return NULL;
+    }
+    ce->refcount++; //这里加1是因为CG(class_table)中多了一个bucket指向这个ce了
+    
+    //以标准类名为key将zend_class_entry插入CG(class_table)
+    //这才是后面要用到的类
+    if (zend_hash_add_ptr(class_table, Z_STR_P(op2), ce) == NULL) {
+        //插入失败
+        return NULL;
+    }else{
+        //插入成功
+        return ce;
+    } 
+}
+```
+> 这个函数就是将类以 __正确的类名__ 为key插入到CG(class_table)，这一步完成后`zend_do_early_binding()`后面就将`ZEND_DECLARE_CLASS`这条opcode置为0了，这样在运行时就直接跳过此opcode了，现在清楚为什么执行时会有很多为0的opcode了吧？
+
+> __(2)有继承类：__ 这种类是有继承的父类，它的定义有两条opcode：`ZEND_FETCH_CLASS`、`ZEND_DECLARE_INHERITED_CLASS`，上面我们一张图画过示例中user类编译的情况，我们先看下它的opcode再作说明。
+
+![](../img/ast_fetch_class.png)
+
+```c
+case ZEND_DECLARE_INHERITED_CLASS:
+{
+    zend_op *fetch_class_opline = opline-1;
+    zval *parent_name;
+    zend_class_entry *ce;
+
+    parent_name = CT_CONSTANT(fetch_class_opline->op2); //父类名
+
+    //在EG(class_table)中查找父类(注意：EG(class_table)与CG(class_table)指向同一个位置)
+    if (((ce = zend_lookup_class_ex(Z_STR_P(parent_name), parent_name + 1, 0)) == NULL) || ...) {
+        //没找到父类，有可能父类没有定义、有可能父类在子类之后定义的......
+        if (CG(compiler_options) & ZEND_COMPILE_DELAYED_BINDING) {
+            uint32_t *opline_num = &CG(active_op_array)->early_binding;
+
+            while (*opline_num != (uint32_t)-1) {
+                opline_num = &CG(active_op_array)->opcodes[*opline_num].result.opline_num;
+            }
+            *opline_num = opline - CG(active_op_array)->opcodes;
+            opline->opcode = ZEND_DECLARE_INHERITED_CLASS_DELAYED;
+            opline->result_type = IS_UNUSED;
+            opline->result.opline_num = -1;
+        }
+        return;
+    }
+    if (do_bind_inherited_class(CG(active_op_array), opline, CG(class_table), ce, 1) == NULL) {
+        return;
+    }
+    
+    //清理无用的opcode：ZEND_FETCH_CLASS
+    zend_del_literal(CG(active_op_array), fetch_class_opline->op2.constant);
+    MAKE_NOP(fetch_class_opline);
+
+    table = CG(class_table);
+    break;
+}
+```
+> 通过上面的处理我们可以看到，首先是查找父类：
+
+>> 1)如果父类没有找到则将opcode置为`ZEND_DECLARE_INHERITED_CLASS_DELAYED`，这种情况下当前类是没有编译到CG(class_table)中去的，也就是这个时候这个类是无法使用的，在执行的时候会再次尝试这个过程，那个时候如果找到父类了则再加入EG(class_table)；
+
+>> 2)如果找到父类了则与无继承的类处理一样，将zend_class_entry添加到CG(class_table)中，然后将对应的两条opcode删掉，除了这个外还有一个非常重要的操作：`zend_do_inheritance()`，这里主要是进行属性、常量、成员方法的合并、拷贝，这个过程这里暂不展开，《3.4.3继承》一节再作具体说明。
 
 
