@@ -681,4 +681,63 @@ case ZEND_DECLARE_INHERITED_CLASS:
 
 >> 2)如果找到父类了则与无继承的类处理一样，将zend_class_entry添加到CG(class_table)中，然后将对应的两条opcode删掉，除了这个外还有一个非常重要的操作：`zend_do_inheritance()`，这里主要是进行属性、常量、成员方法的合并、拷贝，这个过程这里暂不展开，《3.4.3继承》一节再作具体说明。
 
+__总结：__
+
+上面我们介绍了类的编译过程，整个流程东西比较但并不复杂，主要围绕zend_class_entry进行的操作，另外我们知道了类插入EG(class_table)的过程，这个相当于类的声明在编译阶段提前"执行"了，也有可能因为父类找不到等原因延至运行时执行，清楚了这个过程你应该能明白下面这些例子为什么有的可以运行而有的则报错的原因了吧？
+
+```php
+//情况1
+new A();
+
+class A extends B{}
+class B{}
+
+===================
+完整opcodes：
+1 ZEND_NEW                    => 执行到这报错，因为此时A因为找不到B尚未编译进EG(class_table)
+2 ZEND_DO_FCALL
+3 ZEND_FETCH_CLASS             
+4 ZEND_DECLARE_INHERITED_CLASS 
+5 ZEND_DECLARE_CLASS           => 注册class B
+6 ZEND_RETURN
+
+实际执行顺序：5->1->2->3->4->6
+```
+```php
+//情况2
+class A extends B{}
+class B{}
+
+new A();
+===================
+完整opcodes：
+1 ZEND_FETCH_CLASS             
+2 ZEND_DECLARE_INHERITED_CLASS => 注册class A，此时已经可以找到B
+3 ZEND_DECLARE_CLASS           => 注册class B
+4 ZEND_NEW
+5 ZEND_DO_FCALL
+6 ZEND_RETURN
+
+实际执行顺序：3->1->2->4->5->6，执行到4时A都已经注册，所以可以执行
+```
+```php
+//情况3
+class A extends B{}
+class B extends C{}
+class C{}
+
+new A();
+===================
+完整opcodes：
+1 ZEND_FETCH_CLASS             => 找不到B,直接报错
+2 ZEND_DECLARE_INHERITED_CLASS
+3 ZEND_FETCH_CLASS             
+4 ZEND_DECLARE_INHERITED_CLASS => 注册class B，此时可以找到C，所以注册成功
+5 ZEND_DECLARE_CLASS           => 注册class C
+6 ZEND_NEW
+7 ZEND_DO_FCALL
+8 ZEND_RETURN
+
+实际执行顺序：5->1->2->3->4->5->6->7->8，执行到1发现还是找不到父类B，报错
+```
 
