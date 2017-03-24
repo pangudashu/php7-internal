@@ -458,12 +458,50 @@ void zend_compile_prop_decl(zend_ast *ast)
         zend_declare_property_ex(ce, name, &value_zv, flags, doc_comment);
     }
 }
+```
+开始的时候我们已经介绍：属性值是通过 __数组__ 保存的，然后其存储位置通过以 __属性名__ 为key的哈希表保存，使用的时候先从这个哈希表中找到属性信息同时得到属性值的保存位置，然后再进一步取出属性值。
 
+`zend_declare_property_ex()`这步操作就是来确定属性的存储位置的，它将属性值按静态、非静态分别保存在default_static_members_table、default_properties_table两个数组中，同时将其存储位置保存到属性结构的offset中。
+```c
 //zend_API.c
 ZEND_API int zend_declare_property_ex(zend_class_entry *ce, zend_string *name, zval *property, int access_type,...)
 {
+    zend_property_info *property_info, *property_info_ptr;
+    
+    if (ce->type == ZEND_INTERNAL_CLASS) {//内部类
+        ...
+    }else{
+        property_info = zend_arena_alloc(&CG(arena), sizeof(zend_property_info));
+    }
+
+    if (access_type & ZEND_ACC_STATIC) {
+        //静态属性
+        ...
+        property_info->offset = ce->default_static_members_count++; //分配属性编号，同变量一样，静态属性的就是数组索引
+        ce->default_static_members_table = perealloc(ce->default_static_members_table, sizeof(zval) * ce->default_static_members_count, ce->type == ZEND_INTERNAL_CLASS);
+
+        ZVAL_COPY_VALUE(&ce->default_static_members_table[property_info->offset], property);
+        if (ce->type == ZEND_USER_CLASS) {
+            ce->static_members_table = ce->default_static_members_table;
+        }
+    }else{
+        //非静态属性
+        ...
+        //非静态属性值存储在对象中，所以与静态属性不同，它的offset并不是default_properties_table数组索引
+        //而是相对于zend_object大小的(因为普通属性值数组保存在zend_object结构之后，这个与局部变量、zend_execute_data关系一样)
+        property_info->offset = OBJ_PROP_TO_OFFSET(ce->default_properties_count); 
+        ce->default_properties_count++;
+        ce->default_properties_table = perealloc(ce->default_properties_table, sizeof(zval) * ce->default_properties_count, ce->type == ZEND_INTERNAL_CLASS);
+
+        ZVAL_COPY_VALUE(&ce->default_properties_table[OBJ_PROP_TO_NUM(property_info->offset)], property);
+    }
+
+    //设置property_info其它的一些值
+    ...
 }
 ```
+这个操作中重点是offset的计算方式，静态属性这个比较好理解，就是default_static_members_table数组索引；非静态属性zend_class_entry.default_properties_table保存的只是默认属性值，我们在下>一篇介绍对象时再具体说明object、class之间属性的存储关系。
+
 __(3)方法编译__
 
 
