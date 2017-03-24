@@ -1,9 +1,8 @@
 # PHP7内核剖析
-
 (更新中...)
-
 文中涉及代码版本：php-7.0.12
 
+## 目录：
 * 第1章 PHP基本架构
    * 1.1 基本概念(1/base_introduction.md)
    * [1.2 PHP框架执行流程](1/base_process.md)
@@ -40,3 +39,10 @@
    * [5.1 Zend内存池](5/zend_alloc.md)
    * 5.2 垃圾回收(gc.md)
 * 第6章 扩展开发
+
+## 反馈
+[交流&扯淡](https://github.com/pangudashu/php7-internal/issues/3)
+
+[错误反馈](https://github.com/pangudashu/php7-internal/issues/2)
+
+
