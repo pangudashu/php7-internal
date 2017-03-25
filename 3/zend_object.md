@@ -17,6 +17,7 @@ struct _zend_object {
 
 ```
 几个主要的成员：
+
 __(1)ce：__ 所属类
 
 __(2)handlers:__ 这个保存的对象相关操作的一些函数指针，比如成员属性的读写、成员方法的获取、对象的销毁/克隆等等，这些操作接口都有默认的函数。
@@ -43,7 +44,7 @@ ZEND_API zend_object_handlers std_object_handlers = {
     ...
 }
 ```
-__(3)：__ 
+__(3)properties_table：__ 成员属性数组，还记得我们在介绍类一节时提过非静态属性存储在对象结构中吗？就是这个properties_table！注意，它是一个数组，`zend_object`是个变长结构体，分配时会根据非静态属性的数量确定其大小。
 
 #### 3.4.2.2 对象的创建
 PHP中通过`new + 类名`创建一个类的实例，我们从一个例子分析下对象创建的过程中都有哪些操作。
@@ -53,6 +54,7 @@ class my_class
 {
     const TYPE = 90;
     public $name = "pangudashu";
+    public $ids = array();
 }
 
 $obj = new my_class();
@@ -147,6 +149,34 @@ ZEND_API zend_object *zend_objects_new(zend_class_entry *ce)
     return object;
 }
 ```
-这里需要注意，分配zend_object并不仅仅
+有个地方这里需要特别注意：分配对象结构的内存并不仅仅是zend_object的大小。我们在3.4.2.1介绍properties_table时说过这是一个变长数组，它用来存放非静态属性的值，所以分配zend_object时需要加上非静态属性所占用的内存大小：`zend_object_properties_size()`(实际就是zend_class_entry.default_properties_count)。
 
 __(2)初始化成员属性__
+```c
+ZEND_API void object_properties_init(zend_object *object, zend_class_entry *class_type)
+{
+    if (class_type->default_properties_count) {
+        zval *src = class_type->default_properties_table;
+        zval *dst = object->properties_table;
+        zval *end = src + class_type->default_properties_count;
+
+        //将非静态属性值从：
+        //zend_class_entry.default_properties_table复制到zend_object.properties_table
+        do {
+            ZVAL_COPY(dst, src);
+            src++;
+            dst++;
+        } while (src != end);
+        object->properties = NULL;
+    }
+}
+```
+这一步操作是将非静态属性的值从`zend_class_entry.default_properties_table -> zend_object.properties_table`，当然这里不是硬拷贝，而是增加引用，两者当前指向的value还是同一份，除非对象试图改写指向的属性值，那时将触发写时复制机制重新拷贝一份。
+
+上面那个例子，类有两个普通属性：$name、$ids，假如我们实例化了两个对象，那么zend_class_entry与zend_object中普通属性值的关系如下图所示。
+
+![](../object_class_prop.png)
+
+
+
+
