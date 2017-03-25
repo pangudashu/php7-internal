@@ -177,7 +177,7 @@ ZEND_API void object_properties_init(zend_object *object, zend_class_entry *clas
 
 ![](../img/object_class_prop.png)
 
-3.4.2.3 对象的复制
+#### 3.4.2.3 对象的复制
 PHP中普通变量的复制可以通过直接赋值完成，比如：
 ```php
 $a = array();
