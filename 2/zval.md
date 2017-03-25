@@ -285,7 +285,7 @@ $b[] = 3;
 |resource        |            |
 |reference       |            |
 ```
-__copyable__ 的意思是当value发生duplication时是否需要copy，这个具体有两种情形下会发生：
+__copyable__ 的意思是当value发生duplication时是否需要或者能够copy，这个具体有两种情形下会发生：
 * a.从 __literal变量区__ 复制到 __局部变量区__ ，比如：`$a = [];`实际会有两个数组，而`$a = "hi~";//interned string`则只有一个string
 * b.局部变量区分离时(写时复制)：如改变变量内容时引用计数大于1则需要分离，`$a = [];$b = $a; $b[] = 1;`这里会分离，类型是array所以可以复制，如果是对象：`$a = new user;$b = $a;$a->name = "dd";`这种情况是不会复制object的，$a、$b指向的对象还是同一个
 
