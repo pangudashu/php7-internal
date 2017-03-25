@@ -23,10 +23,11 @@
       * <a href="3/zend_executor.md#333-函数的执行流程">3.3.3 函数的执行流程</a>
    * 3.4 面向对象实现
       * [3.4.1 类](3/zend_class.md)
-      * 3.4.2 对象(3/zend_object.md)
-      * 3.4.3 继承
-      * 3.4.4 魔术方法
-      * 3.4.5 抽象类和接口
+      * [3.4.2 对象](3/zend_object.md)
+      * 3.4.3 属性与方法(3/zend_prop_method.md)
+      * 3.4.4 继承
+      * 3.4.5 魔术方法
+      * 3.4.6 抽象类和接口
    * 3.5 运行时缓存(3/zend_runtime_cache.md)
 * [第4章 PHP语法实现](4/php_language.md)
    * 4.1 变量

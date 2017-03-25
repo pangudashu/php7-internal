@@ -175,8 +175,31 @@ ZEND_API void object_properties_init(zend_object *object, zend_class_entry *clas
 
 上面那个例子，类有两个普通属性：$name、$ids，假如我们实例化了两个对象，那么zend_class_entry与zend_object中普通属性值的关系如下图所示。
 
-![](../object_class_prop.png)
+![](../img/object_class_prop.png)
 
+3.4.2.3 对象的复制
+PHP中普通变量的复制可以通过直接赋值完成，比如：
+```php
+$a = array();
+$b = $a;
+```
+但是对象无法这么进行复制，仅仅通过赋值传递对象，它们指向的都是同一个对象，修改时也不会发生硬拷贝。比如上面这个例子，我们把`$a`赋值给`$b`，然后如果我们修改`$b`的内容，那么这时候会进行value分离，`$a`的内容是不变的，但是如果是把一个对象赋值给了另一个变量，这俩对象不管哪一个修改另外一个都随之改变。
 
+```php
+class my_class 
+{
+    public $arr = array();
+}
 
+$a = new my_class;
+$b = $a;
 
+$b->arr[] = 1;
+
+var_dump($a === $b);
+====================
+输出：bool(true)
+```
+还记得我们在《2.1.3.2 写时复制》一节讲过zval有个类型掩码: __type_flag__ 吗？其中有个是否可复制的标识：__IS_TYPE_COLLECTABLE__ ，copyable的意思是当value发生duplication时是否需要或能够copy，而object的类型是不能复制(不清楚的可以翻下前面的章节)，所以我们不能简单的通过赋值语句进行对象的复制。
+
+PHP提供了另外一个关键词来实现对象的复制：__clone__。
