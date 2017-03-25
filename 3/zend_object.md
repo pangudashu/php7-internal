@@ -18,7 +18,7 @@ struct _zend_object {
 ```
 几个主要的成员：
 
-__(1)ce：__ 所属类
+__(1)ce：__ 所属类的zend_class_entry。
 
 __(2)handlers:__ 这个保存的对象相关操作的一些函数指针，比如成员属性的读写、成员方法的获取、对象的销毁/克隆等等，这些操作接口都有默认的函数。
 ```c
@@ -41,7 +41,28 @@ ZEND_API zend_object_handlers std_object_handlers = {
     zend_objects_clone_obj,                 /* clone_obj */
     zend_std_read_property,                 /* read_property */
     zend_std_write_property,                /* write_property */
-    ...
+    zend_std_read_dimension,                /* read_dimension */
+    zend_std_write_dimension,               /* write_dimension */
+    zend_std_get_property_ptr_ptr,          /* get_property_ptr_ptr */
+    NULL,                                   /* get */
+    NULL,                                   /* set */
+    zend_std_has_property,                  /* has_property */
+    zend_std_unset_property,                /* unset_property */
+    zend_std_has_dimension,                 /* has_dimension */
+    zend_std_unset_dimension,               /* unset_dimension */
+    zend_std_get_properties,                /* get_properties */
+    zend_std_get_method,                    /* get_method */
+    NULL,                                   /* call_method */
+    zend_std_get_constructor,               /* get_constructor */
+    zend_std_object_get_class_name,         /* get_class_name */
+    zend_std_compare_objects,               /* compare_objects */
+    zend_std_cast_object_tostring,          /* cast_object */
+    NULL,                                   /* count_elements */
+    zend_std_get_debug_info,                /* get_debug_info */
+    zend_std_get_closure,                   /* get_closure */
+    zend_std_get_gc,                        /* get_gc */
+    NULL,                                   /* do_operation */
+    NULL,                                   /* compare */
 }
 ```
 __(3)properties_table：__ 成员属性数组，还记得我们在介绍类一节时提过非静态属性存储在对象结构中吗？就是这个properties_table！注意，它是一个数组，`zend_object`是个变长结构体，分配时会根据非静态属性的数量确定其大小。
@@ -171,7 +192,7 @@ ZEND_API void object_properties_init(zend_object *object, zend_class_entry *clas
     }
 }
 ```
-这一步操作是将非静态属性的值从`zend_class_entry.default_properties_table -> zend_object.properties_table`，当然这里不是硬拷贝，而是增加引用，两者当前指向的value还是同一份，除非对象试图改写指向的属性值，那时将触发写时复制机制重新拷贝一份。
+这一步操作是将非静态属性的值从`zend_class_entry.default_properties_table -> zend_object.properties_table`，当然这里不是硬拷贝，而是浅复制(增加引用)，两者当前指向的value还是同一份，除非对象试图改写指向的属性值，那时将触发写时复制机制重新拷贝一份。
 
 上面那个例子，类有两个普通属性：$name、$ids，假如我们实例化了两个对象，那么zend_class_entry与zend_object中普通属性值的关系如下图所示。
 
@@ -180,7 +201,7 @@ ZEND_API void object_properties_init(zend_object *object, zend_class_entry *clas
 以上就是实例化一个对象的过程，总结一下具体的步骤：
 * __step1:__ 首先根据类名去EG(class_table)中找到具体的类，即zend_class_entry
 * __step2:__ 分配zend_object结构，一起分配的还有普通非静态属性值的内存
-* __step3:__ 初始化对象的非静态属性，将属性值从zend_class_entry拷贝至对象中
+* __step3:__ 初始化对象的非静态属性，将属性值从zend_class_entry浅复制到对象中
 * __step4:__ 查找当前类是否定义了构造函数，如果没有定义则跳过执行构造函数的opcode，否则为调用构造函数的执行进行一些准备工作(分配zend_execute_data)
 * __step5:__ 实例化完成，返回新实例化的对象(如果返回的对象没有变量使用则直接释放掉了)
 
@@ -210,3 +231,14 @@ var_dump($a === $b);
 还记得我们在《2.1.3.2 写时复制》一节讲过zval有个类型掩码: __type_flag__ 吗？其中有个是否可复制的标识：__IS_TYPE_COPYABLE__ ，copyable的意思是当value发生duplication时是否需要或能够copy，而object的类型是不能复制(不清楚的可以翻下前面的章节)，所以我们不能简单的通过赋值语句进行对象的复制。
 
 PHP提供了另外一个关键词来实现对象的复制：__clone__。
+```php
+$copy_of_object = clone $object;
+```
+`clone`出的对象就与原来的对象完全隔离了，各自修改都不会相互影响，另外如果类中定义了`__clone()`魔法函数，那么在`clone`时将调用此函数。
+
+`clone`的实现比较简单，这里简单看下。
+
+```c
+
+```
+
