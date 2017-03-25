@@ -177,6 +177,13 @@ ZEND_API void object_properties_init(zend_object *object, zend_class_entry *clas
 
 ![](../img/object_class_prop.png)
 
+以上就是实例化一个对象的过程，总结一下具体的步骤：
+* __step1:__ 首先根据类名去EG(class_table)中找到具体的类，即zend_class_entry
+* __step2:__ 分配zend_object结构，一起分配的还有普通非静态属性值的内存
+* __step3:__ 初始化对象的非静态属性，将属性值从zend_class_entry拷贝至对象中
+* __step4:__ 查找当前类是否定义了构造函数，如果没有定义则跳过执行构造函数的opcode，否则为调用构造函数的执行进行一些准备工作(分配zend_execute_data)
+* __step5:__ 实例化完成，返回新实例化的对象(如果返回的对象没有变量使用则直接释放掉了)
+
 #### 3.4.2.3 对象的复制
 PHP中普通变量的复制可以通过直接赋值完成，比如：
 ```php
