@@ -236,9 +236,46 @@ $copy_of_object = clone $object;
 ```
 `clone`出的对象就与原来的对象完全隔离了，各自修改都不会相互影响，另外如果类中定义了`__clone()`魔法函数，那么在`clone`时将调用此函数。
 
-`clone`的实现比较简单，这里简单看下。
-
+`clone`的实现比较简单，通过`zend_object.clone_obj`(即:`zend_objects_clone_obj()`)完成。
 ```c
+//zend_objects.c
+ZEND_API zend_object *zend_objects_clone_obj(zval *zobject)
+{
+    zend_object *old_object;
+    zend_object *new_object;
 
+    old_object = Z_OBJ_P(zobject);
+    //重新分配一个zend_object
+    new_object = zend_objects_new(old_object->ce);
+    
+    //浅复制properties_table、properties
+    //如果定义了__clone()则调用此方法
+    zend_objects_clone_members(new_object, old_object);
+
+    return new_object;
+}
 ```
+#### 3.4.2.4 对象比较
+当使用比较运算符（==）比较两个对象变量时，比较的原则是：如果两个对象的属性和属性值 都相等，而且两个对象是同一个类的实例，那么这两个对象变量相等；而如果使用全等运算符（===），这两个对象变量一定要指向某个类的同一个实例（即同一个对象）。
 
+PHP中对象间的"=="比较通过函数`zend_std_compare_objects()`处理。
+```c
+static int zend_std_compare_objects(zval *o1, zval *o2)
+{
+    ...
+
+    if (zobj1->ce != zobj2->ce) {
+        return 1; /* different classes */
+    }
+    if (!zobj1->properties && !zobj2->properties) {
+        //逐个比较properties_table
+        ...
+    }else{
+        //比较properties
+        return zend_compare_symbol_tables(zobj1->properties, zobj2->properties);
+    }
+}
+```
+"==="的比较通过函数`zend_is_identical()`处理，比较简单，这里不再展开。
+
+#### 3.4.2.5 
