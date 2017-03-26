@@ -18,9 +18,11 @@ struct _zend_object {
 ```
 几个主要的成员：
 
-__(1)ce：__ 所属类的zend_class_entry。
+__(1)handle:__ 一次request期间对象的编号，每个对象都有一个唯一的编号，与创建先后顺序有关，主要在垃圾回收时用，下面会详细说明。
 
-__(2)handlers:__ 这个保存的对象相关操作的一些函数指针，比如成员属性的读写、成员方法的获取、对象的销毁/克隆等等，这些操作接口都有默认的函数。
+__(2)ce:__ 所属类的zend_class_entry。
+
+__(3)handlers:__ 这个保存的对象相关操作的一些函数指针，比如成员属性的读写、成员方法的获取、对象的销毁/克隆等等，这些操作接口都有默认的函数。
 ```c
 struct _zend_object_handlers {
     int                                     offset;
@@ -65,7 +67,9 @@ ZEND_API zend_object_handlers std_object_handlers = {
     NULL,                                   /* compare */
 }
 ```
-__(3)properties_table：__ 成员属性数组，还记得我们在介绍类一节时提过非静态属性存储在对象结构中吗？就是这个properties_table！注意，它是一个数组，`zend_object`是个变长结构体，分配时会根据非静态属性的数量确定其大小。
+__(4)properties:__ 普通成员属性哈希表，对象创建之初这个值为NULL，主要是在动态定义属性时会用到，与properties_table有一定关系，下一节我们将单独说明，这里暂时忽略。
+
+__(5)properties_table:__ 成员属性数组，还记得我们在介绍类一节时提过非静态属性存储在对象结构中吗？就是这个properties_table！注意，它是一个数组，`zend_object`是个变长结构体，分配时会根据非静态属性的数量确定其大小。
 
 #### 3.4.2.2 对象的创建
 PHP中通过`new + 类名`创建一个类的实例，我们从一个例子分析下对象创建的过程中都有哪些操作。
