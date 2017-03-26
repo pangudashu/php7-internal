@@ -24,8 +24,8 @@
    * 3.4 面向对象实现
       * [3.4.1 类](3/zend_class.md)
       * [3.4.2 对象](3/zend_object.md)
-      * 3.4.3 属性与方法(3/zend_prop_method.md)
-      * 3.4.4 继承
+      * 3.4.3 继承(3/zend_extends.md)
+      * 3.4.4 成员属性(3/zend_prop.md)
       * 3.4.5 魔术方法
       * 3.4.6 抽象类和接口
    * 3.5 运行时缓存(3/zend_runtime_cache.md)
