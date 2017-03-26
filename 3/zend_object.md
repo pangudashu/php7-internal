@@ -149,14 +149,16 @@ ZEND_API int _object_and_properties_init(zval *arg, zend_class_entry *class_type
         //初始化成员属性
         object_properties_init(Z_OBJ_P(arg), class_type);
     } else {
+        //调用自定义的创建object的钩子函数
         ZVAL_OBJ(arg, class_type->create_object(class_type));
     }
     return SUCCESS;
 }
 ```
-这个过程又具体分了两步：分配对象结构、初始化成员属性，我们继续看下这里面的处理。
+还记得上一节介绍zend_class_entry时有几个自定义的钩子函数吗？如果定义了`create_object`这个地方就会调用自定义的函数来创建zend_object，这种情况通常发生在内核或扩展中定义的内部类(当然用户自定义类也可以修改，但一般不会那样做)；用户自定义类在这个地方又具体分了两步：分配对象结构、初始化成员属性，我们继续看下这里面的处理。
 
 __(1)分配对象结构:zend_object__
+
 ```c
 //zend_objects.c
 ZEND_API zend_object *zend_objects_new(zend_class_entry *ce)
@@ -234,7 +236,7 @@ PHP提供了另外一个关键词来实现对象的复制：__clone__。
 ```php
 $copy_of_object = clone $object;
 ```
-`clone`出的对象就与原来的对象完全隔离了，各自修改都不会相互影响，另外如果类中定义了`__clone()`魔法函数，那么在`clone`时将调用此函数。
+`clone`出的对象就与原来的对象完全隔离了，各自修改都不会相互影响，另外如果类中定义了`__clone()`魔术方法，那么在`clone`时将调用此函数。
 
 `clone`的实现比较简单，通过`zend_object.clone_obj`(即:`zend_objects_clone_obj()`)完成。
 ```c
@@ -278,4 +280,4 @@ static int zend_std_compare_objects(zval *o1, zval *o2)
 ```
 "==="的比较通过函数`zend_is_identical()`处理，比较简单，这里不再展开。
 
-#### 3.4.2.5 
+#### 3.4.2.5 对象的销毁

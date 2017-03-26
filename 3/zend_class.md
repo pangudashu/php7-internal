@@ -38,7 +38,7 @@ struct _zend_class_entry {
     HashTable properties_info; //成员属性基本信息哈希表，key为成员名，value为zend_property_info
     HashTable constants_table; //常量哈希表，通过constant定义的
 
-    //以下是构造函授、析构函数、魔法函数的指针
+    //以下是构造函授、析构函数、魔术方法的指针
     union _zend_function *constructor;
     union _zend_function *destructor;
     union _zend_function *clone;
@@ -55,8 +55,8 @@ struct _zend_class_entry {
 
     zend_class_iterator_funcs iterator_funcs;
 
-    //下面这几个暂时忽略，后面碰到的时候再分析其作用
-    /* handlers */
+    //自定义的钩子函数，通常是定义内部类时使用，可以灵活的进行一些个性化的操作
+    //用户自定义类不会用到，暂时忽略即可
     zend_object* (*create_object)(zend_class_entry *class_type);
     zend_object_iterator *(*get_iterator)(zend_class_entry *ce, zval *object, int by_ref);
     int (*interface_gets_implemented)(zend_class_entry *iface, zend_class_entry *class_type); /* a class implements this interface */
@@ -257,7 +257,7 @@ my_class::$method();
 
 成员方法的调用与普通function过程基本相同，根据对象所属类或直接根据类取到method的zend_function，然后执行，具体的过程[《3.3 Zend引擎执行过程》](zend_executor.md)已经详细说过，这里不再重复。
 
-#### 3.4.1.5 类的编译
+#### 3.4.1.5 自定义类的编译
 前面我们先介绍了类的相关组成部分，接下来我们从一个例子简单看下类的编译过程，这个过程最终的产物就是zend_class_entry。
 
 ```php
@@ -557,7 +557,7 @@ void zend_begin_method_decl(zend_op_array *op_array, zend_string *name, zend_boo
         zend_error_noreturn(..);
     }
     
-    //后面主要是设置一些构造函数、析构函数、魔法函数指针，以及其它一些可见性、静态非静态的检查
+    //后面主要是设置一些构造函数、析构函数、魔术方法指针，以及其它一些可见性、静态非静态的检查
     ...
 }
 ```
@@ -740,4 +740,21 @@ new A();
 
 实际执行顺序：5->1->2->3->4->5->6->7->8，执行到1发现还是找不到父类B，报错
 ```
+
+3.4.1.6 内部类
+前面我们介绍了类的基本组成以及用户自定义类的编译，除了在PHP代码中可以定义一个类，我们也可以在内核或扩展中定义一个类(与定义内部函数类似)，这种类称之为 __内部类__。
+
+相比于用户自定义类的编译实现，内部类的定义比较简单，也更加灵活，可以进行一些个性化的处理，比如我们可以定义创建对象的钩子函数：`create_object`，从而在对象实例化时调用我们自己定义的函数完成，这样我们就可以进行很多其它的操作。
+
+内部类的定义简单的概括就是`创建一个zend_class_entry结构，然后插入到EG(class_table)中`，涉及的操作主要有：
+
+* __注册类到符号表__
+* __实现继承、接口__
+* __定义常量__
+* __定义成员属性__
+* __定义成员方法__
+
+实际这些与用户自定义类的实现相同，只是内部类直接调用相关API完成这些操作，具体的API接口本节不再介绍，我们将在后面介绍扩展开发一章中再系统说明。
+
+
 
