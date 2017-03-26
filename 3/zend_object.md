@@ -174,6 +174,40 @@ ZEND_API zend_object *zend_objects_new(zend_class_entry *ce)
 ```
 有个地方这里需要特别注意：分配对象结构的内存并不仅仅是zend_object的大小。我们在3.4.2.1介绍properties_table时说过这是一个变长数组，它用来存放非静态属性的值，所以分配zend_object时需要加上非静态属性所占用的内存大小：`zend_object_properties_size()`(实际就是zend_class_entry.default_properties_count)。
 
+另外这里还有一个关键操作：__将object编号并插入EG(objects_store).object_buckets数组__。zend_object有个成员：handle，这个值在一次request期间所有实例化对象的编号，每调用`zend_objects_new()`实例化一个对象就会将其插入到object_buckets数组中，其在数组中的下标就是handle。这个过程是在`zend_objects_store_put()`中完成的。
+```c
+//zend_objects_API.c
+ZEND_API void zend_objects_store_put(zend_object *object)
+{
+    int handle;
+
+    if (EG(objects_store).free_list_head != -1) {
+        //这种情况主要是gc中会将中间一些object销毁，空出一些bucket位置
+        //然后free_list_head就指向了第一个可用的bucket位置
+        //后面可用的保存在第一个空闲bucket的handle中
+        handle = EG(objects_store).free_list_head;
+        EG(objects_store).free_list_head = GET_OBJ_BUCKET_NUMBER(EG(objects_store).object_buckets[handle]);
+    } else {
+        if (EG(objects_store).top == EG(objects_store).size) {
+            //扩容
+        }
+        //递增加1
+        handle = EG(objects_store).top++;
+    }
+    object->handle = handle;
+    //存入object_buckets数组
+    EG(objects_store).object_buckets[handle] = object;
+}
+
+typedef struct _zend_objects_store {
+    zend_object **object_buckets; //对象数组
+    uint32_t top; //当前全部object数
+    uint32_t size; //object_buckets大小
+    int free_list_head; //第一个可用object_buckets位置
+} zend_objects_store;
+```
+将所有的对象保存在`EG(objects_store).object_buckets`中的目的是用于垃圾回收(不确定是不是还有其它的作用)，防止出现循环引用而导致内存泄漏的问题，这个机制后面章节会单独介绍，这里只要记得有这么个东西就行了。
+
 __(2)初始化成员属性__
 ```c
 ZEND_API void object_properties_init(zend_object *object, zend_class_entry *class_type)
@@ -281,3 +315,50 @@ static int zend_std_compare_objects(zval *o1, zval *o2)
 "==="的比较通过函数`zend_is_identical()`处理，比较简单，这里不再展开。
 
 #### 3.4.2.5 对象的销毁
+object与string、array等类型不同，它是个符合类型，所以它的销毁过程更加复杂，赋值、函数调用结束或主动unset等操作中如果发现object引用计数为0则将触发销毁动作。
+```php
+//情况1
+$obj1 = new my_function();
+
+$obj1 = 123; //此时将断开对zend_object的引用，如果refcount=0则销毁
+
+//情况2
+function xxxx(){
+    $obj1 = new my_function();
+    ...
+    return null; //清理局部变量时如果发现$obj1引用为0则销毁
+}
+
+//情况3
+$obj1 = new my_function();
+//整个脚本结束，清理全局变量时
+
+//情况4
+$obj1 = new my_function();
+unset($obj1);
+```
+上面这几个都是比较常见的会进行变量销毁的情况，销毁一个对象由`zend_objects_store_del()`完成，销毁的过程主要是清理成员属性、从EG(objects_store).object_buckets中删除、释放zend_object内存等等。
+```c
+//zend_objects_API.c
+ZEND_API void zend_objects_store_del(zend_object *object)
+{
+    //这个函数if嵌套写的很挫...
+    ...
+    if (GC_REFCOUNT(object) > 0) {
+        GC_REFCOUNT(object)--;
+        return;
+    }
+    ...
+
+    //调用dtor_obj，默认zend_objects_destroy_object()
+    //接着调用free_obj，默认zend_object_std_dtor()
+    object->handlers->dtor_obj(object);
+    object->handlers->free_obj(object);
+    ...
+    ptr = ((char*)object) - object->handlers->offset;
+    efree(ptr);
+}
+```
+另外，在减少refcount时如果发现object的引用计数大于0那么并不是什么都不做了，还记得2.1.3.4介绍的垃圾回收吗？PHP变量类型有的会因为循环引用导致正常的gc无法生效，这种类型的变量就有可能成为垃圾，所以会对这些类型的`zval.u1.type_flag`打上`IS_TYPE_COLLECTABLE`标签，然后在减少引用时即使refcount大于0也会启动垃圾检查，目前只有object、array两种类型会使用这种机制。
+
+
