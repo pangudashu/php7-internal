@@ -651,23 +651,20 @@ case ZEND_DECLARE_INHERITED_CLASS:
     if (((ce = zend_lookup_class_ex(Z_STR_P(parent_name), parent_name + 1, 0)) == NULL) || ...) {
         //没找到父类，有可能父类没有定义、有可能父类在子类之后定义的......
         if (CG(compiler_options) & ZEND_COMPILE_DELAYED_BINDING) {
-            uint32_t *opline_num = &CG(active_op_array)->early_binding;
-
-            while (*opline_num != (uint32_t)-1) {
-                opline_num = &CG(active_op_array)->opcodes[*opline_num].result.opline_num;
-            }
-            *opline_num = opline - CG(active_op_array)->opcodes;
+            ...
+            //将opcode重置为ZEND_DECLARE_INHERITED_CLASS_DELAYED
             opline->opcode = ZEND_DECLARE_INHERITED_CLASS_DELAYED;
             opline->result_type = IS_UNUSED;
             opline->result.opline_num = -1;
         }
         return;
     }
+    //注册继承类
     if (do_bind_inherited_class(CG(active_op_array), opline, CG(class_table), ce, 1) == NULL) {
         return;
     }
     
-    //清理无用的opcode：ZEND_FETCH_CLASS
+    //清理无用的opcode：ZEND_FETCH_CLASS，重置为0，执行时直接跳过
     zend_del_literal(CG(active_op_array), fetch_class_opline->op2.constant);
     MAKE_NOP(fetch_class_opline);
 
