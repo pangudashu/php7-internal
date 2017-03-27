@@ -145,6 +145,35 @@ __(4)合并properties_info哈希表:__ 这也是非常关键的一步，上面�
 这个地方相对比较复杂，具体的合并策略在`do_inherit_property()`中，这里不再罗列代码。
 
 #### 3.4.3.2 继承常量
+常量的合并策略比较简单，如果父类与子类冲突时用子类的，不冲突时则将父类的常量合并到子类。
+```c
+static void do_inherit_class_constant(zend_string *name, zval *zv, zend_class_entry *ce, zend_class_entry *parent_ce)
+{
+    //父类定义的常量在子类中没有定义
+    if (!zend_hash_exists(&ce->constants_table, name)) {
+        ...
+        _zend_hash_append(&ce->constants_table, name, zv);
+    }
+}
+```
 
 #### 3.4.3.3 继承方法
+```c
+if (zend_hash_num_elements(&parent_ce->function_table)) {
+    //扩展子类的function_table哈希表大小
+    zend_hash_extend(&ce->function_table,
+            zend_hash_num_elements(&ce->function_table) +
+            zend_hash_num_elements(&parent_ce->function_table), 0);
+
+    //遍历父类function_table，检查是否可被子类继承
+    ZEND_HASH_FOREACH_STR_KEY_PTR(&parent_ce->function_table, key, func) {
+        zend_function *new_func = do_inherit_method(key, func, ce);
+
+        if (new_func) {
+            _zend_hash_append_ptr(&ce->function_table, key, new_func);
+        }
+    } ZEND_HASH_FOREACH_END();
+}
+```
+
 
