@@ -158,6 +158,9 @@ static void do_inherit_class_constant(zend_string *name, zval *zv, zend_class_en
 ```
 
 #### 3.4.3.3 继承方法
+与属性一样，子类可以继承父类的公有、受保护的方法，方法的继承比较复杂，因为会有访问控制、抽象类、接口、Trait等多种限制条件。实现上与前面几种相同，即父类的function_table合并到子类的function_table中。
+
+首先是将子类function_table扩大，以容纳父子类全部方法，然后遍历父类function_table，逐个判断是否可被子类继承，如果可被继承则插入到子类function_table中。
 ```c
 if (zend_hash_num_elements(&parent_ce->function_table)) {
     //扩展子类的function_table哈希表大小
@@ -175,5 +178,44 @@ if (zend_hash_num_elements(&parent_ce->function_table)) {
     } ZEND_HASH_FOREACH_END();
 }
 ```
+在合并的过程中需要对父类的方法进行一系列检查，最简单的情况就是父类中定义的方法在子类中不存在，这种情况比较简单，直接将父类的zend_function复制一份给子类。
+```c
+static zend_function *do_inherit_method(zend_string *key, zend_function *parent, zend_class_entry *ce)
+{
+    zval *child = zend_hash_find(&ce->function_table, key);
 
+    if(child){
+        //方法与子类冲突
+        ...
+    }
 
+    //父子类方法不冲突，直接复制
+    return zend_duplicate_function(parent, ce);
+}
+```
+当然这里不完全是复制：如果继承的父类是内部类则会硬拷贝一份zend_function结构(此结构的指针成员不复制)；如果父类是用户自定义的类，且继承的方法没有静态变量则不会硬拷贝，而是增加zend_function的引用计数(zend_op_array.refcount)。
+```c
+//func是父类成员方法，ce是子类
+static zend_function *zend_duplicate_function(zend_function *func, zend_class_entry *ce)
+{
+    zend_function *new_function;
+
+    if (UNEXPECTED(func->type == ZEND_INTERNAL_FUNCTION)) {
+        //内部函数
+        //如果子类也是内部类则会调用malloc分配内存(不会被回收)，否则在zend内存池分配
+        ...
+    }else{
+        if (func->op_array.refcount) {
+            (*func->op_array.refcount)++;
+        }
+        if (EXPECTED(!func->op_array.static_variables)) {
+            return func;
+        } 
+        
+        //硬拷贝
+        new_function = zend_arena_alloc(&CG(arena), sizeof(zend_op_array));
+        memcpy(new_function, func, sizeof(zend_op_array));
+    }
+}
+```
+合并时另外一个比较复杂的情况是父类与子类中的方法冲突了，即父子类定义了同名方法。
