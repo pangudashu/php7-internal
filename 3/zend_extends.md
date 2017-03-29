@@ -219,6 +219,14 @@ static zend_function *zend_duplicate_function(zend_function *func, zend_class_en
 }
 ```
 合并时另外一个比较复杂的情况是父类与子类中的方法冲突了，即子类重写了父类的方法，这种情况需要对父子类以及要合并的方法进行一系列检查，这一步在`do_inheritance_check_on_method()`中完成，具体情况如下：
+```c
+static void do_inheritance_check_on_method(zend_function *child, zend_function *parent)
+{
+    uint32_t child_flags;
+    uint32_t parent_flags = parent->common.fn_flags;
+    ...
+}
+```
 
 __(1)抽象子类的抽象方法与抽象父类的抽象方法冲突:__ 无法重写，Fatal错误。
 ```php
@@ -289,4 +297,28 @@ if (UNEXPECTED((child_flags & ZEND_ACC_ABSTRACT) > (parent_flags & ZEND_ACC_ABST
     zend_error_noreturn(E_COMPILE_ERROR, "Cannot make non abstract method %s::%s() abstract in class %s",...);
 }
 ```
-__(5)__
+__(5)子类方法限制父类方法访问权限:__ Fatal错误，不允许派生类限制父类方法的访问权限，如父类方法为public，而子类试图重写为protected/private。
+```php
+class A {
+    public function test(){}
+}
+
+class B extends A {
+    protected function test(){}
+}
+
+============================
+PHP Fatal error:  Access level to B::test() must be public (as in class A)
+```
+判断逻辑：
+```c
+//ZEND_ACC_PPP_MASK = (ZEND_ACC_PUBLIC | ZEND_ACC_PROTECTED | ZEND_ACC_PRIVATE)
+if (UNEXPECTED((child_flags & ZEND_ACC_PPP_MASK) > (parent_flags & ZEND_ACC_PPP_MASK))) {            
+    zend_error_noreturn(E_COMPILE_ERROR, "Access level to %s::%s() must be %s (as in class %s)%s", ...);
+} else if (((child_flags & ZEND_ACC_PPP_MASK) < (parent_flags & ZEND_ACC_PPP_MASK))
+        && ((parent_flags & ZEND_ACC_PPP_MASK) & ZEND_ACC_PRIVATE)) {
+    child->common.fn_flags |= ZEND_ACC_CHANGED;
+}
+```
+
+
