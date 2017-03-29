@@ -42,7 +42,7 @@
 * 第6章 扩展开发
 
 ## 反馈
-[交流&扯淡](https://github.com/pangudashu/php7-internal/issues/3)
+[交流&吐槽](https://github.com/pangudashu/php7-internal/issues/3)
 
 [错误反馈](https://github.com/pangudashu/php7-internal/issues/2)
 
