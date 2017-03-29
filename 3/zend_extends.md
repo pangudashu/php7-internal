@@ -218,4 +218,75 @@ static zend_function *zend_duplicate_function(zend_function *func, zend_class_en
     }
 }
 ```
-合并时另外一个比较复杂的情况是父类与子类中的方法冲突了，即父子类定义了同名方法。
+合并时另外一个比较复杂的情况是父类与子类中的方法冲突了，即子类重写了父类的方法，这种情况需要对父子类以及要合并的方法进行一系列检查，这一步在`do_inheritance_check_on_method()`中完成，具体情况如下：
+
+__(1)抽象子类的抽象方法与抽象父类的抽象方法冲突:__ 无法重写，Fatal错误。
+```php
+abstract class B extends A {
+    abstract function test();
+}
+abstract class A
+{
+    abstract function test();
+}
+
+============================
+PHP Fatal error:  Can't inherit abstract function A::test() (previously declared abstract in B)
+```
+判断逻辑：
+```c
+if ((parent->common.scope->ce_flags & ZEND_ACC_INTERFACE) == 0 //父类非接口
+        && parent->common.fn_flags & ZEND_ACC_ABSTRACT //父类方法为抽象方法
+        && parent->common.scope != (child->common.prototype ? child->common.prototype->common.scope : child->common.scope)
+        && child->common.fn_flags & (ZEND_ACC_ABSTRACT|ZEND_ACC_IMPLEMENTED_ABSTRACT) //子类方法为抽象或实现了抽象方法
+) { 
+    zend_error_noreturn(E_COMPILE_ERROR, "Can't inherit abstract function %s::%s() (previously declared abstract in %s)",...);
+}
+```
+__(2)父类方法为final:__ Fatal错误，final成员方法不得被重写。
+判断逻辑：
+```c
+if (UNEXPECTED(parent_flags & ZEND_ACC_FINAL)) {
+    zend_error_noreturn(E_COMPILE_ERROR, "Cannot override final method %s::%s()", ...);
+}
+```
+__(3)父子类方法静态属性不一致:__ 父类方法为非静态而子类的是静态(或相反)，Fatal错误。
+```php
+class A {
+    public function test(){}
+}
+
+class B extends A {
+    static public function test(){}
+}
+
+============================
+PHP Fatal error:  Cannot make non static method A::test() static in class B
+```
+判断逻辑：
+```c
+if (UNEXPECTED((child_flags & ZEND_ACC_STATIC) != (parent_flags & ZEND_ACC_STATIC))) {
+    zend_error_noreturn(E_COMPILE_ERROR,...);
+}
+```
+
+__(4)抽象子类的抽象方法覆盖父类非抽象方法:__ Fatal错误。
+```php
+class A {
+    public function test(){}
+}
+
+abstract class B extends A {
+    abstract public function test();
+}
+
+============================
+PHP Fatal error:  Cannot make non abstract method A::test() abstract in class B
+```
+判断逻辑：
+```c
+if (UNEXPECTED((child_flags & ZEND_ACC_ABSTRACT) > (parent_flags & ZEND_ACC_ABSTRACT))) {
+    zend_error_noreturn(E_COMPILE_ERROR, "Cannot make non abstract method %s::%s() abstract in class %s",...);
+}
+```
+__(5)__

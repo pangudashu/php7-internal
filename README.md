@@ -24,26 +24,24 @@
    * 3.4 面向对象实现
       * [3.4.1 类](3/zend_class.md)
       * [3.4.2 对象](3/zend_object.md)
-      * 3.4.3 继承(3/zend_extends.md)
-      * 3.4.4 成员属性(3/zend_prop.md)
+      * [3.4.3 继承](3/zend_extends.md)
+      * 3.4.4 动态成员属性(3/zend_prop.md)
       * 3.4.5 魔术方法
       * 3.4.6 抽象类和接口
    * 3.5 运行时缓存(3/zend_runtime_cache.md)
-* [第4章 PHP语法实现](4/php_language.md)
+* [第4章 PHP基础语法实现](4/php_language.md)
    * 4.1 变量
    * 4.2 运算符
    * 4.3 选择结构
    * 4.4 循环结构
    * 4.5 跳转语句
-   * 4.6 函数
 * 第5章 内存管理
    * [5.1 Zend内存池](5/zend_alloc.md)
-   * 5.2 垃圾回收(gc.md)
+   * 5.2 引用计数()
+   * 5.3 垃圾回收(gc.md)
 * 第6章 扩展开发
 
 ## 反馈
-[交流&吐槽](https://github.com/pangudashu/php7-internal/issues/3)
-
-[错误反馈](https://github.com/pangudashu/php7-internal/issues/2)
+[交流&吐槽](https://github.com/pangudashu/php7-internal/issues/3)  [错误反馈](https://github.com/pangudashu/php7-internal/issues/2)
 
 
