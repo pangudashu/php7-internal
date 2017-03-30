@@ -1,8 +1,8 @@
 ### 3.1.2 抽象语法树编译流程
 
-上一小节我们简单介绍了从PHP代码解析为抽象语法树的过程，这一节我们再介绍下从__抽象语法树->Opcodes__的过程。
+上一小节我们简单介绍了从PHP代码解析为抽象语法树的过程，这一节我们再介绍下从 __抽象语法树->Opcodes__ 的过程。
 
-语法解析过程的产物保存于CG(AST)，接着zend引擎会把AST进一步编译为__zend_op_array__，它是编译阶段最终的产物，也是执行阶段的输入，后面我们介绍的东西基本都是围绕zend_op_array展开的，AST解析过程确定了当前脚本定义了哪些变量，并为这些变量__顺序编号__，这些值在使用时都是按照这个编号获取的，另外也将变量的初始化值、调用的函数/类/常量名称等值(称之为字面量)保存到zend_op_array.literals中，这些字面量也有一个唯一的编号，所以执行的过程实际就是根据各指令调用不同的C函数，然后根据变量、字面量、临时变量的编号对这些值进行处理加工。
+语法解析过程的产物保存于CG(AST)，接着zend引擎会把AST进一步编译为 __zend_op_array__ ，它是编译阶段最终的产物，也是执行阶段的输入，后面我们介绍的东西基本都是围绕zend_op_array展开的，AST解析过程确定了当前脚本定义了哪些变量，并为这些变量 __顺序编号__ ，这些值在使用时都是按照这个编号获取的，另外也将变量的初始化值、调用的函数/类/常量名称等值(称之为字面量)保存到zend_op_array.literals中，这些字面量也有一个唯一的编号，所以执行的过程实际就是根据各指令调用不同的C函数，然后根据变量、字面量、临时变量的编号对这些值进行处理加工。
 
 我们首先看下zend_op_array的结构，明确几个关键信息，然后再看下ast编译为zend_op_array的过程。
 #### 3.1.2.1 zend_op_array数据结构
@@ -76,7 +76,7 @@ typedef union _znode_op {
 opcode各字段含义下面展开说明。
 
 ##### 3.1.2.1.1 handler
-handler为每条opcode对应的C语言编写的__处理过程__，所有opcode对应的处理过程定义在`zend_vm_def.h`中，值得注意的是这个文件并不是编译时用到的，因为opcode的__处理过程__有三种不同的提供形式：CALL、SWITCH、GOTO，默认方式为CALL，这个是什么意思呢？
+handler为每条opcode对应的C语言编写的 __处理过程__ ，所有opcode对应的处理过程定义在`zend_vm_def.h`中，值得注意的是这个文件并不是编译时用到的，因为opcode的 __处理过程__ 有三种不同的提供形式：CALL、SWITCH、GOTO，默认方式为CALL，这个是什么意思呢？
 
 每个opcode都代表了一些特定的处理操作，这个东西怎么提供呢？一种是把每种opcode负责的工作封装成一个function，然后执行器循环执行即可，这就是CALL模式的工作方式；另外一种是把所有opcode的处理方式通过C语言里面的label标签区分开，然后执行器执行的时候goto到相应的位置处理，这就是GOTO模式的工作方式；最后还有一种方式是把所有的处理方式写到一个switch下，然后通过case不同的opcode执行具体的操作，这就是SWITCH模式的工作方式。
 
@@ -332,7 +332,7 @@ ZEND_API zend_op_array *compile_file(zend_file_handle *file_handle, int type)
 ```
 compile_file()操作中有几个保存原来值的操作，这是因为这个函数在PHP脚本执行中并不会只执行一次，主脚本执行时会第一次调用，而include、require也会调用，所以需要先保存当前值，然后执行完再还原回去。
 
-AST->zend_op_array编译是在__zend_compile_top_stmt()__中完成，这个函数是总入口，会被多次递归调用：
+AST->zend_op_array编译是在 __zend_compile_top_stmt()__ 中完成，这个函数是总入口，会被多次递归调用：
 ```c
 //zend_compile.c
 void zend_compile_top_stmt(zend_ast *ast)
