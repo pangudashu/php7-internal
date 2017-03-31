@@ -243,6 +243,8 @@ PHP Fatal error:  Can't inherit abstract function A::test() (previously declared
 ```
 判断逻辑：
 ```c
+//do_inheritance_check_on_method():
+
 if ((parent->common.scope->ce_flags & ZEND_ACC_INTERFACE) == 0 //父类非接口
         && parent->common.fn_flags & ZEND_ACC_ABSTRACT //父类方法为抽象方法
         && parent->common.scope != (child->common.prototype ? child->common.prototype->common.scope : child->common.scope)
@@ -254,6 +256,8 @@ if ((parent->common.scope->ce_flags & ZEND_ACC_INTERFACE) == 0 //父类非接口
 __(2)父类方法为final:__ Fatal错误，final成员方法不得被重写。
 判断逻辑：
 ```c
+//do_inheritance_check_on_method():
+
 if (UNEXPECTED(parent_flags & ZEND_ACC_FINAL)) {
     zend_error_noreturn(E_COMPILE_ERROR, "Cannot override final method %s::%s()", ...);
 }
@@ -273,6 +277,8 @@ PHP Fatal error:  Cannot make non static method A::test() static in class B
 ```
 判断逻辑：
 ```c
+//do_inheritance_check_on_method():
+
 if (UNEXPECTED((child_flags & ZEND_ACC_STATIC) != (parent_flags & ZEND_ACC_STATIC))) {
     zend_error_noreturn(E_COMPILE_ERROR,...);
 }
@@ -293,6 +299,8 @@ PHP Fatal error:  Cannot make non abstract method A::test() abstract in class B
 ```
 判断逻辑：
 ```c
+//do_inheritance_check_on_method():
+
 if (UNEXPECTED((child_flags & ZEND_ACC_ABSTRACT) > (parent_flags & ZEND_ACC_ABSTRACT))) {
     zend_error_noreturn(E_COMPILE_ERROR, "Cannot make non abstract method %s::%s() abstract in class %s",...);
 }
@@ -312,6 +320,8 @@ PHP Fatal error:  Access level to B::test() must be public (as in class A)
 ```
 判断逻辑：
 ```c
+//do_inheritance_check_on_method():
+
 //ZEND_ACC_PPP_MASK = (ZEND_ACC_PUBLIC | ZEND_ACC_PROTECTED | ZEND_ACC_PRIVATE)
 if (UNEXPECTED((child_flags & ZEND_ACC_PPP_MASK) > (parent_flags & ZEND_ACC_PPP_MASK))) {            
     zend_error_noreturn(E_COMPILE_ERROR, "Access level to %s::%s() must be %s (as in class %s)%s", ...);
@@ -320,5 +330,71 @@ if (UNEXPECTED((child_flags & ZEND_ACC_PPP_MASK) > (parent_flags & ZEND_ACC_PPP_
     child->common.fn_flags |= ZEND_ACC_CHANGED;
 }
 ```
+__(6)剩余检查情况:__ 除了上面5中情形下无法重写方法，剩下还有一步对函数参数的检查，这个过程我们整体看一下。
+```c
+//do_inheritance_check_on_method():
+
+if (UNEXPECTED(!zend_do_perform_implementation_check(child, parent))) {
+    ...
+    zend_error(error_level, "Declaration of %s %s be compatible with %s", ZSTR_VAL(child_prototype), error_verb, ZSTR_VAL(method_prototype));
+    zend_string_free(child_prototype);
+    zend_string_free(method_prototype);
+}
+```
+实际上`zend_do_perform_implementation_check()`这个函数是用来检查一个方法是否实现了某抽象方法的，继承的时候遵循的也是这个规则，所以这里可以将父类方法理解为抽象方法，只有子类方法实现了该"抽象方法"才能重写父类方法。
+```c
+static zend_bool zend_do_perform_implementation_check(const zend_function *fe, const zend_function *proto)
+{
+    ...
+    //如果检查的方法是__construct且父类方法不是interface和abstract则子类__construct覆盖父类的
+    if ((fe->common.fn_flags & ZEND_ACC_CTOR)
+        && ((proto->common.scope->ce_flags & ZEND_ACC_INTERFACE) == 0
+            && (proto->common.fn_flags & ZEND_ACC_ABSTRACT) == 0)) {
+        return 1;
+    }
+
+    //如果父类方法为私有方法则子类方法可以覆盖
+    if (proto->common.fn_flags & ZEND_ACC_PRIVATE) {
+        return 1;
+    }
+
+    //如果父类方法必传参数小于子类的或者父类的总参数大于子类的则不能覆盖
+    //如：
+    //  父类 public function test($a, $b = 3){}
+    //  子类 public function test($a, $b){}
+    if (proto->common.required_num_args < fe->common.required_num_args
+        || proto->common.num_args > fe->common.num_args) {
+        return 0;
+    }
+
+    //可变函数,暂未理解这里的可变函数指哪类，忽略
+    ...
+
+    //如果有定义的参数检查参数类型是否匹配，如果显式声明了参数类型则父子类方法必须匹配
+    for (i = 0; i < num_args; i++) {
+        zend_arg_info *fe_arg_info = &fe->common.arg_info[i];
+        if (!zend_do_perform_type_hint_check(fe, fe_arg_info, proto, proto_arg_info)) {
+            return 0;
+        }
+ 
+        //是否引用也必须一致       
+        if (fe_arg_info->pass_by_reference != proto_arg_info->pass_by_reference) {
+            return 0;
+        }
+    }
+
+    //如果父类方法声明了返回值类型则子类方法必须声明且类型一致，相反如果子类声明了而父类无要求则可以
+    if (proto->common.fn_flags & ZEND_ACC_HAS_RETURN_TYPE) {
+        if (!(fe->common.fn_flags & ZEND_ACC_HAS_RETURN_TYPE)) {
+            return 0;
+        }
+
+        if (!zend_do_perform_type_hint_check(fe, fe->common.arg_info - 1, proto, proto->common.arg_info - 1)) {
+            return 0;
+        }
+    }
+}
+```
+这个判断过程还是比较复杂的，有些地方很难理解为什么设计，想了解完整过程的可以自行翻下代码。
 
 
