@@ -73,4 +73,26 @@ found:
 
 ![](../img/zend_dy_prop.png)
 
+成员属性的读取通过`zend_object->handlers->read_property`(默认zend_std_read_property())函数完成，动态属性的查找过程实际与`write_property`中相同：
+```c
+zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_slot, zval *rv)
+{
+    ...
+    zobj = Z_OBJ_P(object);
 
+    //首先查找zend_class_entry.properties_info，普通属性可以在这里找到
+    property_offset = zend_get_property_offset(zobj->ce, Z_STR_P(member), (type == BP_VAR_IS) || (zobj->ce->__get != NULL), cache_slot);
+
+    if (EXPECTED(property_offset != ZEND_WRONG_PROPERTY_OFFSET)) {
+        if (EXPECTED(property_offset != ZEND_DYNAMIC_PROPERTY_OFFSET)) {
+            //普通属性
+            retval = OBJ_PROP(zobj, property_offset);
+        } else if (EXPECTED(zobj->properties != NULL)) {
+            //动态属性从zend_object->properties中查找
+            retval = zend_hash_find(zobj->properties, Z_STR_P(member));
+            if (EXPECTED(retval)) goto exit;
+        }
+    }
+    ...
+}
+```
