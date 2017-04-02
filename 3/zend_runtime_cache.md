@@ -26,7 +26,20 @@ $obj->test();
 * __(1)__ 第一次执行`echo $this->id;`时首先根据$this取出zend_class_entry，然后根据“id”查找zend_class_entry.properties_info找到属性zend_property_info，取出此结构的offset，第一次执行后将zend_class_entry及offset保存到了test()函数的zend_op_array->run_time_cache中，占用16字节，起始位置为0，这个值记录在“id”的zval.u2.cache_slot中；
 * __(2)__ 之后再次执行`echo $this->id;`时直接根据opline从zend_op_literals中取出“id”的zval，得到缓存数据保存位置：0，然后去zend_op_array->run_time_cache取出缓存的zend_class_entry、offset。
 
+这个例子缓存数据占用了16字节(2个sizeof(void*))大小的空间，而有的只需要8字节，取决于操作类型：
 
+* 8字节：常量、函数、类
+* 16字节：成员属性、成员方法、类常量
 
+另外一个问题是这些操作数的缓存位置(zval.u2.cache_slot)是在什么阶段确定的呢？实际上这个值是在编译阶段确定的，通过zend_op_array.cache_size记录缓存可用起始位置，编译过程中如果发现当前操作适用缓存机制，则根据缓存数据的大小从cache_size开始分配8或16字节给那个操作数，cache_size向后移动对应大小，然后将起始位置保存于CONST操作数的zval.u2.cache_slot中，执行时直接根据这个值读写缓存。
 
+具体缓存的读写通过以下几个宏完成：
+```c
+//设置缓存
+CACHE_PTR(Z_CACHE_SLOT_P(EX_CONSTANT(opline->op1/2)), 缓存的数据指针);
 
+//读取缓存
+CACHED_PTR(Z_CACHE_SLOT_P(EX_CONSTANT(opline->op1/2)));
+
+//EX_CONSTANT(opline->op1/2)是取当前IS_CONST操作数对应数据的zval
+```
