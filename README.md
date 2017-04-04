@@ -10,7 +10,7 @@
    * [2.1 变量的内部实现](2/zval.md)
    * [2.2 数组](2/zend_ht.md)
    * [2.3 静态变量](2/static_var.md)
-   * 2.4 全局变量
+   * [2.4 全局变量](2/global_var.md)
    * 2.5 常量
 * 第3章 Zend虚拟机
    * [3.1 PHP代码的编译](3/zend_compile.md)
