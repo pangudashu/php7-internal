@@ -69,3 +69,21 @@ global $id; // 相当于：$id = & EG(symbol_table)["id"];
 超全局变量实际是PHP内核定义的一些全局变量：$GLOBALS、$_SERVER、$_REQUEST、$_POST、$_GET、$_FILES、$_ENV、$_COOKIE、$_SESSION、argv、argc。
 
 ### 2.4.4 销毁
+局部变量如果没有手动销毁，那么在函数执行结束时会将它们销毁，而全局变量则是在整个请求结束时才会销毁，即使是我们直接在PHP脚本中定义在函数外的那些变量。
+```c
+void shutdown_destructors(void)
+{
+    if (CG(unclean_shutdown)) {
+        EG(symbol_table).pDestructor = zend_unclean_zval_ptr_dtor;
+    }
+    zend_try {
+        uint32_t symbols;
+        do {
+            symbols = zend_hash_num_elements(&EG(symbol_table));
+            //销毁
+            zend_hash_reverse_apply(&EG(symbol_table), (apply_func_t) zval_call_destructor);
+        } while (symbols != zend_hash_num_elements(&EG(symbol_table)));
+    }
+    ...
+}
+```
