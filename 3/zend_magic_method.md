@@ -25,4 +25,34 @@ struct _zend_class_entry {
 
 ![](../img/magic_function.png)
 
+具体在编译成员方法时设置：zend_begin_method_decl()。
+```c
+void zend_begin_method_decl(zend_op_array *op_array, zend_string *name, zend_bool has_body)
+{
+    ...
+    //插入类的function_table中
+    if (zend_hash_add_ptr(&ce->function_table, lcname, op_array) == NULL) {
+        zend_error_noreturn(..);
+    }
+
+    if (!in_trait && zend_string_equals_ci(lcname, ce->name)) {
+        if (!ce->constructor) {
+            ce->constructor = (zend_function *) op_array;
+        }
+    } else if (zend_string_equals_literal(lcname, ZEND_CONSTRUCTOR_FUNC_NAME)) {
+        ce->constructor = (zend_function *) op_array;
+    } else if (zend_string_equals_literal(lcname, ZEND_DESTRUCTOR_FUNC_NAME)) {
+        ce->destructor = (zend_function *) op_array;
+    } else if (zend_string_equals_literal(lcname, ZEND_CLONE_FUNC_NAME)) {
+        ce->clone = (zend_function *) op_array;
+    } else if (zend_string_equals_literal(lcname, ZEND_CALL_FUNC_NAME)) {
+        ce->__call = (zend_function *) op_array;
+    } else if (zend_string_equals_literal(lcname, ZEND_CALLSTATIC_FUNC_NAME)) {
+        ce->__callstatic = (zend_function *) op_array;
+    } else if (...){
+        ...
+    }
+    ...
+}
+```
 
