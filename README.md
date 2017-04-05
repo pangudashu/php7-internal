@@ -28,7 +28,7 @@
       * [3.4.2 对象](3/zend_object.md)
       * [3.4.3 继承](3/zend_extends.md)
       * [3.4.4 动态属性](3/zend_prop.md)
-      * 3.4.5 魔术方法
+      * [3.4.5 魔术方法](3/zend_magic_method.md)
       * 3.4.6 抽象类和接口
    * [3.5 运行时缓存](3/zend_runtime_cache.md)
 * [第4章 PHP基础语法实现](4/php_language.md)
@@ -42,6 +42,7 @@
    * 5.2 引用计数()
    * 5.3 垃圾回收(gc.md)
 * 第6章 扩展开发
+   * 6.1 扩展的构成
 
 ## 反馈
 [交流&吐槽](https://github.com/pangudashu/php7-internal/issues/3)  [错误反馈](https://github.com/pangudashu/php7-internal/issues/2)

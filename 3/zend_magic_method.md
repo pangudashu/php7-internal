@@ -91,6 +91,8 @@ static void php_var_serialize_intern(smart_str *buf, zval *struc, php_serialize_
 ```
 其中类型是对象时将先检查`zend_class_function.function_table`中是否定义了`__sleep()`，如果有的话则调用：
 ```c
+//case IS_OBJEST:
+...
 if (ce != PHP_IC_ENTRY && zend_hash_str_exists(&ce->function_table, "__sleep", sizeof("__sleep")-1)) {
     ZVAL_STRINGL(&fname, "__sleep", sizeof("__sleep") - 1);
     //调用用户自定义的__sleep()方法
