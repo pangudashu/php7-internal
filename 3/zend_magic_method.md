@@ -108,5 +108,7 @@ if (ce != PHP_IC_ENTRY && zend_hash_str_exists(&ce->function_table, "__sleep", s
         return;
     }
 }
+//后面会走到IS_ARRAY分支继续序列化处理
+...
 ```
 其它魔术方法与__sleep()类似，都是在一些特殊操作中固定调用的。
