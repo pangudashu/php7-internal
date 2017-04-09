@@ -41,8 +41,11 @@
    * [5.1 Zend内存池](5/zend_alloc.md)
    * 5.2 引用计数()
    * 5.3 垃圾回收(gc.md)
-* 第6章 扩展开发
-   * 6.1 扩展的构成
+* 第6章 线程安全
+   * 6.1 什么是线程安全
+   * 6.2 线程安全资源管理器
+* 第7章 扩展开发
+   * 7.1 扩展的构成
 
 ## 反馈
 [交流&吐槽](https://github.com/pangudashu/php7-internal/issues/3)  [错误反馈](https://github.com/pangudashu/php7-internal/issues/2)
