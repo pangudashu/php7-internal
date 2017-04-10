@@ -217,7 +217,7 @@ static void allocate_new_resource(tsrm_tls_entry **thread_resources_ptr, THREAD_
     ...
 }
 ```
-> 线程本地存储(Thread Local Storage):
+> __线程本地存储(Thread Local Storage, TLS):__ 我们知道在一个进程中，所有线程是共享同一个地址空间的。所以，如果一个变量是全局的或者是静态的，那么所有线程访问的是同一份，如果某一个线程对其进行了修改，也就会影响到其他所有的线程。不过我们可能并不希望这样，所以更多的推荐用基于堆栈的自动变量或函数参数来访问数据，因为基于堆栈的变量总是和特定的线程相联系的。
 
 
 比如tsrm_tls_table_size=2，则thread 2、thread 4将保存在tsrm_tls_table[0]中，如果只有CG、EG两个资源，则存储结构如下图：
