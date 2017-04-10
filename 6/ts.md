@@ -39,6 +39,7 @@ TSRM_API int tsrm_startup(int expected_threads, int expected_resources, int debu
     tsrm_tls_table_size = expected_threads;
     tsrm_tls_table = (tsrm_tls_entry **) calloc(tsrm_tls_table_size, sizeof(tsrm_tls_entry *));
     ...
+    //初始化资源的递增id，注册资源时就是用的这个值
     id_count=0;
 
     //分配资源类型数组：resource_types_table
@@ -49,6 +50,109 @@ TSRM_API int tsrm_startup(int expected_threads, int expected_resources, int debu
     tsmm_mutex = tsrm_mutex_alloc();
 }
 ```
+这个步骤在sapi启动时执行，主要工作就是分配tsrm_tls_table、resource_types_table内存以及创建线程互斥锁。
+
+初始化完成各模块会各自进行资源注册，注册后TSRM会给注册的资源分配唯一id，接下来我们以EG为例具体看下其注册、分配资源以及各线程获取的过程。
+
+```c
+#ifdef ZTS
+ZEND_API int executor_globals_id;
+#endif
+
+int zend_startup(zend_utility_functions *utility_functions, char **extensions)
+{
+    ...
+#ifdef ZTS
+    ts_allocate_id(&executor_globals_id, sizeof(zend_executor_globals), (ts_allocate_ctor) executor_globals_ctor, (ts_allocate_dtor) executor_globals_dtor);
+    
+    executor_globals = ts_resource(executor_globals_id);
+    ...
+#endif
+}
+```
+这里有两步操作:
+
+__step (1)__ 首先是资源注册:`ts_allocate_id()`，参数有4个，第一个就是定义的资源id指针，注册之后会把分配的id写到这里，第二个是资源类型的大小，EG资源的结构是`zend_executor_globals`，所以这个值就是sizeof(zend_executor_globals)，后面两个分别是资源的初始化函数以及销毁函数，因为TSRM并不关心资源的具体类型，分配资源时它只按照size大小分配内存，然后回调各资源自己定义的ctor进行初始化。
+```c
+TSRM_API ts_rsrc_id ts_allocate_id(ts_rsrc_id *rsrc_id, size_t size, ts_allocate_ctor ctor, ts_allocate_dtor dtor)
+{
+    //加锁，保证各线程串行调用此函数
+    tsrm_mutex_lock(tsmm_mutex);
+
+    //分配id，即id_count当前值，然后把id_count加1
+    *rsrc_id = TSRM_SHUFFLE_RSRC_ID(id_count++);
+
+    //检查resource_types_table数组当前大小是否已满
+    if (resource_types_table_size < id_count) {
+        //需要对resource_types_table扩容
+        resource_types_table = (tsrm_resource_type *) realloc(resource_types_table, sizeof(tsrm_resource_type)*id_count);
+        ...
+        //把数组大小修改新的大小
+        resource_types_table_size = id_count;
+    }
+
+    //将新注册的资源插入resource_types_table数组，下标就是分配的资源id
+    resource_types_table[TSRM_UNSHUFFLE_RSRC_ID(*rsrc_id)].size = size;
+    resource_types_table[TSRM_UNSHUFFLE_RSRC_ID(*rsrc_id)].ctor = ctor;
+    resource_types_table[TSRM_UNSHUFFLE_RSRC_ID(*rsrc_id)].dtor = dtor;
+    resource_types_table[TSRM_UNSHUFFLE_RSRC_ID(*rsrc_id)].done = 0;
+    ...
+}
+```
+
+到这里并没有结束，所有的资源并不是统一时机注册的，所以注册一个新资源时可能有线程已经分配先前注册的资源了，因此需要对各线程的storage数组进行扩容，否则storage将没有空间容纳新的资源。扩容的过程比较简单：遍历各线程的tsrm_tls_entry，检查storage当时是否有空闲空间，有的话跳过，没有的话则扩展。
+```c
+for (i=0; i<tsrm_tls_table_size; i++) {
+    tsrm_tls_entry *p = tsrm_tls_table[i];
+    
+    //tsrm_tls_table[i]可能保存着多个线程，需要遍历链表
+    while (p) {
+        if (p->count < id_count) {
+            int j;
+
+            //将storage扩容
+            p->storage = (void *) realloc(p->storage, sizeof(void *)*id_count);
+            //分配并初始化新注册的资源，实际这里只会执行一次，不清楚为什么用循环
+            //另外这里不分配内存也可以，可以放到使用时再去分配
+            for (j=p->count; j<id_count; j++) {
+                p->storage[j] = (void *) malloc(resource_types_table[j].size);
+                if (resource_types_table[j].ctor) {
+                    //回调初始化函数进行初始化
+                    resource_types_table[j].ctor(p->storage[j]);
+                }
+            }
+            p->count = id_count;
+        }
+        p = p->next;
+    }
+}
+```
+最后将锁释放，完成注册。
+
+__step (2)__ 完成资源注册后接下来就可以根据资源id安全的操作这个资源了，通过`ts_resource()`获取资源的值，比如EG：
+```c
+zend_executor_globals *executor_globals;
+
+executor_globals = ts_resource(executor_globals_id);
+```
+这样获取的`executor_globals`值就是各线程分离的了，对它的操作将不会再影响其它线程。根据资源id获取当前线程资源的过程：首先是根据线程id哈希得到当前线程的tsrm_tls_entry在tsrm_tls_table哪个槽中，然后开始遍历比较id，直到找到当前线程的tsrm_tls_entry，这个查找过程是需要加锁的，最后根据资源id从storage中对应位置取出资源的地址，这个时候如果发现当前线程还没有创建此资源则会从resource_types_table根据资源id取出资源注册时的大小、初始化函数，然后分配内存、调用初始化函数进行初始化并插入所属线程的storage中。
+```c
+TSRM_API void *ts_resource_ex(ts_rsrc_id id, THREAD_T *th_id)
+{
+    THREAD_T thread_id;
+    int hash_value;
+    tsrm_tls_entry *thread_resources;
+
+    if (!th_id) {
+        thread_resources = tsrm_tls_get();
+
+    }else{
+        thread_id = *th_id;
+    }
+}
+```
+
+
 比如tsrm_tls_table_size=2，则thread 2、thread 4将保存在tsrm_tls_table[0]中，如果只有CG、EG两个资源，则存储结构如下图：
 
 ![](../img/tsrm_tls_table.png)
