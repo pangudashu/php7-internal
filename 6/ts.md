@@ -29,6 +29,26 @@ typedef struct {
 
 另外所有线程的`tsrm_tls_entry`结构通过一个数组保存：tsrm_tls_table，这是个全局变量，所以操作这个变量时需要加锁。这个值在TSRM初始化时按照预设置的线程数分配，每个线程的tsrm_tls_entry结构在这个数组中的位置是根据线程id与预设置的线程数(tsrm_tls_table_size)取模得到的，也就是说有可能多个线程保存在tsrm_tls_table同一位置，所以tsrm_tls_entry是个链表，查找资源时首先根据:`线程id % tsrm_tls_table_size`得到一个tsrm_tls_entry，然后开始遍历链表比较thread_id确定是否是当前线程的。
 
+下面具体看下TSRM初始化的过程(以pthread为例)：
+```c
+TSRM_API int tsrm_startup(int expected_threads, int expected_resources, int debug_level, char *debug_filename)
+{
+    pthread_key_create( &tls_key, 0 );
+
+    //分配tsrm_tls_table
+    tsrm_tls_table_size = expected_threads;
+    tsrm_tls_table = (tsrm_tls_entry **) calloc(tsrm_tls_table_size, sizeof(tsrm_tls_entry *));
+    ...
+    id_count=0;
+
+    //分配资源类型数组：resource_types_table
+    resource_types_table_size = expected_resources;
+    resource_types_table = (tsrm_resource_type *) calloc(resource_types_table_size, sizeof(tsrm_resource_type));
+    ...
+    //创建锁
+    tsmm_mutex = tsrm_mutex_alloc();
+}
+```
 比如tsrm_tls_table_size=2，则thread 2、thread 4将保存在tsrm_tls_table[0]中，如果只有CG、EG两个资源，则存储结构如下图：
 
 ![](../img/tsrm_tls_table.png)
