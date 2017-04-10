@@ -4,7 +4,7 @@
 PHP的SAPI多数是单线程环境，比如cli、fpm、cgi，每个进程只启动一个主线程，这种模式下是不存在线程安全问题的，但是也有多线程的环境，比如Apache，或用户自己嵌入PHP实现的环境，这种情况下就需要考虑线程安全的问题了，因为PHP中有很多全局变量，比如最常见的：EG、CG，如果多个线程共享同一个变量将会冲突，所以PHP为多线程的应用模型提供了一个安全机制：Zend线程安全(Zend Thread Safe, ZTS)。
 
 ## 6.2 线程安全资源管理器
-PHP中专门为解决线程安全的问题抽象出了一个线程安全资源管理器(Thread Safe Resource Mananger, TSRM)，实现原理比较简单：各线程不再共享同一份全局变量，而是各复制一份，使用数据时各线程各取自己的副本，互不干扰。
+PHP中专门为解决线程安全的问题抽象出了一个线程安全资源管理器(Thread Safe Resource Mananger, TSRM)，实现原理比较简单：既然共用资源这么困难那么就干脆不共用，各线程不再共享同一份全局变量，而是各复制一份，使用数据时各线程各取自己的副本，互不干扰。
 
 ### 6.2.1 基本实现
 TSRM核心思想就是为不同的线程分配独立的内存空间，如果一个资源会被多线程使用，那么首先需要预先向TSRM注册资源，然后TSRM为这个资源分配一个唯一的编号，并把这种资源的大小、初始化函数等保存到一个`tsrm_resource_type`结构中，各线程只能通过TSRM分配的那个编号访问这个资源；然后当线程拿着这个编号获取资源时TSRM如果发现是第一次请求，则会根据注册时的资源大小分配一块内存，然后调用初始化函数进行初始化，并把这块资源保存下来供这个线程后续使用。
@@ -143,14 +143,81 @@ TSRM_API void *ts_resource_ex(ts_rsrc_id id, THREAD_T *th_id)
     int hash_value;
     tsrm_tls_entry *thread_resources;
 
+    //step 1：获取线程id
     if (!th_id) {
+        //获取当前线程通过specific data保存的tsrm_tls_entry，暂时忽略
         thread_resources = tsrm_tls_get();
-
+        if(thread_resources){
+            //找到线程的tsrm_tls_entry了
+            TSRM_SAFE_RETURN_RSRC(thread_resources->storage, id, thread_resources->count); //直接返回
+        }
+        //pthread_self()，当前线程id
+        thread_id = tsrm_thread_id();
     }else{
         thread_id = *th_id;
     }
+
+    //step 2:查找线程tsrm_tls_entry
+    tsrm_mutex_lock(tsmm_mutex); //加锁
+
+    //实际就是thread_id % tsrm_tls_table_size
+    hash_value = THREAD_HASH_OF(thread_id, tsrm_tls_table_size);
+    //链表头部
+    thread_resources = tsrm_tls_table[hash_value];
+    if (!thread_resources) {
+        //当前线程第一次使用资源还未分配：先分配tsrm_tls_entry
+        allocate_new_resource(&tsrm_tls_table[hash_value], thread_id);
+        //分配完再次调用，这时候将走到下面的分支
+        return ts_resource_ex(id, &thread_id);
+    }else{
+        //遍历查找当前线程的tsrm_tls_entry
+        do {
+            //找到了
+            if (thread_resources->thread_id == thread_id) {
+                break;
+            }
+            if (thread_resources->next) {
+                thread_resources = thread_resources->next;
+            } else {
+                //遍历到最后也没找到，与上面的一致，先分配再查找
+                allocate_new_resource(&thread_resources->next, thread_id);
+                return ts_resource_ex(id, &thread_id);
+            }
+        } while (thread_resources);
+    }
+    //解锁
+    tsrm_mutex_unlock(tsmm_mutex);
+    
+    //step 3：返回资源
+    TSRM_SAFE_RETURN_RSRC(thread_resources->storage, id, thread_resources->count);
 }
 ```
+首先是获取线程id，如果没有传的话就是当前线程，然后在tsrm_tls_table中查找当前线程的tsrm_tls_entry，不存在则表示当前线程第一次使用资源，则需要调用`allocate_new_resource()`为当前线程分配tsrm_tls_entry，并插入tsrm_tls_table，这个过程还会为当前已注册的所有资源分配内存：
+```c
+static void allocate_new_resource(tsrm_tls_entry **thread_resources_ptr, THREAD_T thread_id)
+{
+    (*thread_resources_ptr) = (tsrm_tls_entry *) malloc(sizeof(tsrm_tls_entry));
+    (*thread_resources_ptr)->storage = NULL;
+    //根据已注册资源数分配storage数组大小，注意这里并不是分配为各资源分配空间
+    if (id_count > 0) {
+        (*thread_resources_ptr)->storage = (void **) malloc(sizeof(void *)*id_count);
+    }
+    (*thread_resources_ptr)->count = id_count;
+    (*thread_resources_ptr)->thread_id = thread_id;
+
+    //将当前线程的tsrm_tls_entry保存到线程本地存储(Thread Local Storage, TLS)
+    tsrm_tls_set(*thread_resources_ptr);
+
+    //为全部资源分配空间
+    for (i=0; i<id_count; i++) {
+        ...
+        (*thread_resources_ptr)->storage[i] = (void *) malloc(resource_types_table[i].size);
+        ...
+    }
+    ...
+}
+```
+> 线程本地存储(Thread Local Storage):
 
 
 比如tsrm_tls_table_size=2，则thread 2、thread 4将保存在tsrm_tls_table[0]中，如果只有CG、EG两个资源，则存储结构如下图：
