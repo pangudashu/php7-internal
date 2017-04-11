@@ -220,9 +220,7 @@ static void allocate_new_resource(tsrm_tls_entry **thread_resources_ptr, THREAD_
 
 比如tsrm_tls_table_size初始化时设置为了2，当前有2个thread：thread 1、thread 2，假如注册了CG、EG两个资源，则存储结构如下图：
 
-![](../img/tsrm_table_a.png)
-
-![](../img/tsrm_tls_table.png)
+![](../img/tsrm_tls_a.png)
 
 ### 6.2.2 Native-TLS
 
