@@ -29,7 +29,8 @@ typedef struct {
 
 另外所有线程的`tsrm_tls_entry`结构通过一个数组保存：tsrm_tls_table，这是个全局变量，所以操作这个变量时需要加锁。这个值在TSRM初始化时按照预设置的线程数分配，每个线程的tsrm_tls_entry结构在这个数组中的位置是根据线程id与预设置的线程数(tsrm_tls_table_size)取模得到的，也就是说有可能多个线程保存在tsrm_tls_table同一位置，所以tsrm_tls_entry是个链表，查找资源时首先根据:`线程id % tsrm_tls_table_size`得到一个tsrm_tls_entry，然后开始遍历链表比较thread_id确定是否是当前线程的。
 
-下面具体看下TSRM初始化的过程(以pthread为例)：
+#### 6.2.1.1 初始化
+在使用TSRM之前需要主动开启，一般这个步骤在sapi启动时执行，主要工作就是分配tsrm_tls_table、resource_types_table内存以及创建线程互斥锁，下面具体看下TSRM初始化的过程(以pthread为例)：
 ```c
 TSRM_API int tsrm_startup(int expected_threads, int expected_resources, int debug_level, char *debug_filename)
 {
@@ -50,10 +51,8 @@ TSRM_API int tsrm_startup(int expected_threads, int expected_resources, int debu
     tsmm_mutex = tsrm_mutex_alloc();
 }
 ```
-这个步骤在sapi启动时执行，主要工作就是分配tsrm_tls_table、resource_types_table内存以及创建线程互斥锁。
-
-初始化完成各模块会各自进行资源注册，注册后TSRM会给注册的资源分配唯一id，接下来我们以EG为例具体看下其注册、分配资源以及各线程获取的过程。
-
+#### 6.2.1.2 资源注册
+初始化完成各模块就可以各自进行资源注册了，注册后TSRM会给注册的资源分配唯一id，之后对此资源的操作只能依据此id，接下来我们以EG为例具体看下其注册过程。
 ```c
 #ifdef ZTS
 ZEND_API int executor_globals_id;
@@ -70,9 +69,7 @@ int zend_startup(zend_utility_functions *utility_functions, char **extensions)
 #endif
 }
 ```
-这里有两步操作:
-
-__step (1)__ 首先是资源注册:`ts_allocate_id()`，参数有4个，第一个就是定义的资源id指针，注册之后会把分配的id写到这里，第二个是资源类型的大小，EG资源的结构是`zend_executor_globals`，所以这个值就是sizeof(zend_executor_globals)，后面两个分别是资源的初始化函数以及销毁函数，因为TSRM并不关心资源的具体类型，分配资源时它只按照size大小分配内存，然后回调各资源自己定义的ctor进行初始化。
+资源注册调用`ts_allocate_id()`完成，此函数有4个参数有，第一个就是定义的资源id指针，注册之后会把分配的id写到这里，第二个是资源类型的大小，EG资源的结构是`zend_executor_globals`，所以这个值就是sizeof(zend_executor_globals)，后面两个分别是资源的初始化函数以及销毁函数，因为TSRM并不关心资源的具体类型，分配资源时它只按照size大小分配内存，然后回调各资源自己定义的ctor进行初始化。
 ```c
 TSRM_API ts_rsrc_id ts_allocate_id(ts_rsrc_id *rsrc_id, size_t size, ts_allocate_ctor ctor, ts_allocate_dtor dtor)
 {
@@ -99,7 +96,6 @@ TSRM_API ts_rsrc_id ts_allocate_id(ts_rsrc_id *rsrc_id, size_t size, ts_allocate
     ...
 }
 ```
-
 到这里并没有结束，所有的资源并不是统一时机注册的，所以注册一个新资源时可能有线程已经分配先前注册的资源了，因此需要对各线程的storage数组进行扩容，否则storage将没有空间容纳新的资源。扩容的过程比较简单：遍历各线程的tsrm_tls_entry，检查storage当时是否有空闲空间，有的话跳过，没有的话则扩展。
 ```c
 for (i=0; i<tsrm_tls_table_size; i++) {
@@ -129,7 +125,8 @@ for (i=0; i<tsrm_tls_table_size; i++) {
 ```
 最后将锁释放，完成注册。
 
-__step (2)__ 完成资源注册后接下来就可以根据资源id安全的操作这个资源了，通过`ts_resource()`获取资源的值，比如EG：
+#### 6.2.1.3 获取资源
+资源的id在注册后需要保存下来，根据id可以通过`ts_resource()`获取到对应资源的值，比如EG，这里暂不考虑EG宏展开的结果，只分析最底层的根据资源id获取资源的操作。
 ```c
 zend_executor_globals *executor_globals;
 
@@ -217,10 +214,13 @@ static void allocate_new_resource(tsrm_tls_entry **thread_resources_ptr, THREAD_
     ...
 }
 ```
-> __线程本地存储(Thread Local Storage, TLS):__ 我们知道在一个进程中，所有线程是共享同一个地址空间的。所以，如果一个变量是全局的或者是静态的，那么所有线程访问的是同一份，如果某一个线程对其进行了修改，也就会影响到其他所有的线程。不过我们可能并不希望这样，所以更多的推荐用基于堆栈的自动变量或函数参数来访问数据，因为基于堆栈的变量总是和特定的线程相联系的。
+这里还用到了一个多线程中经常用到的一个东西：线程本地存储(Thread Local Storage, TLS)，在创建完当前线程的tsrm_tls_entry后会把这个值保存到当前线程的TLS中(即：tsrm_tls_set(*thread_resources_ptr)操作)，这样在`ts_resource()`中就可以通过`tsrm_tls_get()`直接取到了，节省加锁检索的时间。
 
+> __线程本地存储(Thread Local Storage, TLS):__ 我们知道在一个进程中，所有线程是共享同一个地址空间的。所以，如果一个变量是全局的或者是静态的，那么所有线程访问的是同一份，如果某一个线程对其进行了修改，也就会影响到其他所有的线程。不过我们可能并不希望这样，所以更多的推荐用基于堆栈的自动变量或函数参数来访问数据，因为基于堆栈的变量总是和特定的线程相联系的。TLS在各平台下实现方式不同，主要分为两类：静态TLS、动态TLS，pthread中pthread_setspecific()、pthread_getspecific()的实现就可以认为是动态TLS的实现。
 
-比如tsrm_tls_table_size=2，则thread 2、thread 4将保存在tsrm_tls_table[0]中，如果只有CG、EG两个资源，则存储结构如下图：
+比如tsrm_tls_table_size初始化时设置为了2，当前有2个thread：thread 1、thread 2，假如注册了CG、EG两个资源，则存储结构如下图：
+
+![](../img/tsrm_table_a.png)
 
 ![](../img/tsrm_tls_table.png)
 
