@@ -223,5 +223,23 @@ static void allocate_new_resource(tsrm_tls_entry **thread_resources_ptr, THREAD_
 ![](../img/tsrm_tls_a.png)
 
 ### 6.2.2 Native-TLS
+上一节我们介绍了资源的注册以及根据资源id获取资源的方法，那么PHP内核每次使用对应的资源时难道都需要调用`ts_resource()`吗？如果是这样的话那么多次在使用EG时实际都会调一次这个方法，相当于我们需要调用一个函数来获取一个变量，这在性能上是不可接受的，那么有什么办法解决呢？
+
+`ts_resource()`最核心的操作就是根据线程id获取各线程对应的storage数组，这也是最耗时的部分，至于接下来根据资源id从storage数组读取资源就是普通的内存读取了，这并不影响性能，所以解决上面那个问题的关键就在于 __尽可能的减少线程storage的检索__ 。这一节我们来分析下PHP是如果解决这个问题的，在介绍PHP7实现方式之前我们先看下PHP5.x的处理方式。
+
+PHP5的解决方式非常简单，我们还是以EG为例，EG在内核中随处可见，不是要减少对各线程storage的检索次数吗，那么我就只要检索过一次就把已获取的storage指针传给接下来调用的函数用，其它函数再一级级往下传，这样一来各函数如果发现storage通过参数传进来了就直接用，无需再检索了，也就是通过层层传递的方式减少解决这个问题的。这样以来岂不是每个函数都得带这么一个参数？调用别的函数也得把这个值带上？是的。即使这个函数自己不用它也得需要这个值，因为有可能调用别的函数的时候其它函数会用。
+
+如果你对PHP5有所了解的话一定经常看到这两个宏：TSRMLS_DC、TSRMLS_CC，这两个宏就是用来传递storage指针的，TSRMLS_DC用在定义函数的参数中，实际上它就是一个普通的参数定义，TSRMLS_CC用在调用函数时，它就是一个普通的变量值，我们看下它的展开结果：
+```c
+#define TSRMLS_DC   , void ***tsrm_ls
+#define TSRMLS_CC   , tsrm_ls
+```
+它的用法是第一个检索到storage的函数把它的指针传递给了下面的函数，参数是tsrm_ls，后面的函数直接根据接收的参数使用获取再传给其它函数。现在我们再看下EG宏展开的结果：
+```c
+# define EG(v) TSRMG(executor_globals_id, zend_executor_globals *, v)
+
+#define TSRMG(id, type, element)    (((type) (*((void ***) tsrm_ls))[TSRM_UNSHUFFLE_RSRC_ID(id)])->element)
+```
+比如：`EG(function_table) => (((zend_executor_globals *) (*((void ***) tsrm_ls))[executor_globals_id])->function_table)`，这样我们在传了tsrm_ls的函数中就可能读取内存使用了。
 
 
