@@ -234,12 +234,15 @@ PHP5的解决方式非常简单，我们还是以EG为例，EG在内核中随处
 #define TSRMLS_DC   , void ***tsrm_ls
 #define TSRMLS_CC   , tsrm_ls
 ```
-它的用法是第一个检索到storage的函数把它的指针传递给了下面的函数，参数是tsrm_ls，后面的函数直接根据接收的参数使用获取再传给其它函数。现在我们再看下EG宏展开的结果：
+它的用法是第一个检索到storage的函数把它的指针传递给了下面的函数，参数是tsrm_ls，后面的函数直接根据接收的参数使用获取再传给其它函数，当然也可以不传，那样的话就得重新调用ts_resource()获取了。现在我们再看下EG宏展开的结果：
 ```c
 # define EG(v) TSRMG(executor_globals_id, zend_executor_globals *, v)
 
 #define TSRMG(id, type, element)    (((type) (*((void ***) tsrm_ls))[TSRM_UNSHUFFLE_RSRC_ID(id)])->element)
 ```
-比如：`EG(function_table) => (((zend_executor_globals *) (*((void ***) tsrm_ls))[executor_globals_id])->function_table)`，这样我们在传了tsrm_ls的函数中就可能读取内存使用了。
+比如：`EG(function_table) => (((zend_executor_globals *) (*((void ***) tsrm_ls))[executor_globals_id-1])->function_table)`，这样我们在传了tsrm_ls的函数中就可能读取内存使用了。
+
+PHP5的这种处理方式简单但是很不优雅，不管你用不用TSRM都不得不在函数中加上那两个宏，而且很容易遗漏。后来Anatol Belski在PHP的rfc提交了一种新的处理方式：[https://wiki.php.net/rfc/native-tls](https://wiki.php.net/rfc/native-tls)，新的处理方式最终在PHP7版本得以实现，接下来我们就看下PHP7的实现方式。
+
 
 
