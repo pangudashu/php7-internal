@@ -242,7 +242,58 @@ PHP5的解决方式非常简单，我们还是以EG为例，EG在内核中随处
 ```
 比如：`EG(function_table) => (((zend_executor_globals *) (*((void ***) tsrm_ls))[executor_globals_id-1])->function_table)`，这样我们在传了tsrm_ls的函数中就可能读取内存使用了。
 
-PHP5的这种处理方式简单但是很不优雅，不管你用不用TSRM都不得不在函数中加上那两个宏，而且很容易遗漏。后来Anatol Belski在PHP的rfc提交了一种新的处理方式：[https://wiki.php.net/rfc/native-tls](https://wiki.php.net/rfc/native-tls)，新的处理方式最终在PHP7版本得以实现，接下来我们就看下PHP7的实现方式。
+PHP5的这种处理方式简单但是很不优雅，不管你用不用TSRM都不得不在函数中加上那两个宏，而且很容易遗漏。后来Anatol Belski在PHP的rfc提交了一种新的处理方式：[https://wiki.php.net/rfc/native-tls](https://wiki.php.net/rfc/native-tls)，新的处理方式最终在PHP7版本得以实现，通过静态TLS将各线程的storage保存在全局变量中，各函数中使用时直接读取即可。
 
+linux下这种全局变量通过加上`__thread`定义，这样各线程更新这个变量就不会冲突了，实际这是gcc提供的，详细的内容这里不再展开，有兴趣的可以再查下详细的资料。举个例子：
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <unistd.h>
+
+__thread int num = 0;
+
+void* worker(void* arg){
+    while(1){
+        printf("thread:%d\n", num);
+        sleep(1);
+    }
+}
+
+int main(void)
+{
+    pthread_t tid;
+    int ret;
+
+    if ((ret = pthread_create(&tid, NULL, worker, NULL)) != 0){
+        return 1;
+    }
+
+    while(1){
+        num = 4;
+        printf("main:%d\n", num);
+        sleep(1);
+    }
+
+    return 0;
+}
+```
+这个例子有两个线程，其中主线程修改了全局变量num，但是并没有影响另外一个线程。
+
+PHP7中用于缓存各线程storage的全局变量定义在`Zend/zend.c`:
+```c
+#ifdef ZTS
+//这些都是全局变量
+ZEND_API int compiler_globals_id;
+ZEND_API int executor_globals_id;
+static HashTable *global_function_table = NULL;
+static HashTable *global_class_table = NULL;
+static HashTable *global_constants_table = NULL;
+static HashTable *global_auto_globals_table = NULL;
+static HashTable *global_persistent_list = NULL;
+ZEND_TSRMLS_CACHE_DEFINE() //展开后： __thread void *_tsrm_ls_cache = NULL;
+//_tsrm_ls_cache就是各线程storage的地址
+#endif
+```
 
 
