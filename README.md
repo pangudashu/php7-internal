@@ -4,8 +4,10 @@
 
 ## 目录：
 * 第1章 PHP基本架构
-   * 1.1 基本概念(1/base_introduction.md)
-   * [1.2 PHP框架执行流程](1/base_process.md)
+   * 1.1 PHP简介
+   * 1.2 PHP7的改进
+   * 1.3 PHP内核的组成
+   * 1.4 PHP执行的几个阶段
 * 第2章 变量
    * [2.1 变量的内部实现](2/zval.md)
    * [2.2 数组](2/zend_ht.md)
