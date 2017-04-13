@@ -49,6 +49,7 @@
    * [6.2 线程安全资源管理器](6/ts.md)
 * 第7章 扩展开发
    * 7.1 扩展的构成
+   * [7.2 扩展加载过程](7/extension_start.md)
 
 ## 反馈
 [交流&吐槽](https://github.com/pangudashu/php7-internal/issues/3)  [错误反馈](https://github.com/pangudashu/php7-internal/issues/2)
