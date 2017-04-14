@@ -45,7 +45,7 @@ $obj->test();
 具体缓存的读写通过以下几个宏完成：
 ```c
 //设置缓存
-CACHE_PTR(Z_CACHE_SLOT_P(EX_CONSTANT(opline->op1/2)), 缓存的数据指针);
+CACHE_PTR(Z_CACHE_SLOT_P(EX_CONSTANT(opline->op1/2)), ptr); //ptr: 缓存的数据指针
 
 //读取缓存
 CACHED_PTR(Z_CACHE_SLOT_P(EX_CONSTANT(opline->op1/2)));
