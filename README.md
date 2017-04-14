@@ -32,7 +32,7 @@
       * [3.4.4 动态属性](3/zend_prop.md)
       * [3.4.5 魔术方法](3/zend_magic_method.md)
       * 3.4.6 抽象类和接口
-      * 3.4.7 类的自动加载
+      * [3.4.7 类的自动加载](3/zend_autoload.md)
    * [3.5 运行时缓存](3/zend_runtime_cache.md)
 * [第4章 PHP基础语法实现](4/php_language.md)
    * 4.1 变量
