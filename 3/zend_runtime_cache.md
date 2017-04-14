@@ -52,4 +52,8 @@ CACHED_PTR(Z_CACHE_SLOT_P(EX_CONSTANT(opline->op1/2)));
 
 //EX_CONSTANT(opline->op1/2)是取当前IS_CONST操作数对应数据的zval
 ```
-
+展开后：
+```c
+((void**)((char*)execute_data->run_time_cache + (num)))[0]
+```
+`execute_data->run_time_cache`缓存的`zend_op_array->run_time_cache`。
