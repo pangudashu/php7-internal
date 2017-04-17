@@ -31,7 +31,7 @@ struct _zval_struct {
     zend_value        value; //变量实际的value
     union {
         struct {
-            ZEND_ENDIAN_LOHI_4( //忽略这个宏，直接分析下面的结构
+            ZEND_ENDIAN_LOHI_4( //这个是为了兼容大小字节序，小字节序就是下面的顺序，大字节序则下面4个顺序翻转
                 zend_uchar    type,         //变量类型
                 zend_uchar    type_flags,  //类型掩码，不同的类型会有不同的几种属性，内存管理会用到
                 zend_uchar    const_flags,
