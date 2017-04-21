@@ -181,7 +181,7 @@ typedef zend_ulong zend_mm_bitset;    /* 4-byte or 8-byte integer */
 
 typedef zend_mm_bitset zend_mm_page_map[ZEND_MM_PAGE_MAP_LEN];     /* 64B */
 ```
-`heap->free_map`实际就是：__zend_ulong free_map[16 or 8]__，以__free_map[8]__为例，数组中的8个数字分别表示：0-63、64-127、128-191、192-255、256-319、320-383、384-447、448-511 page的分配与否，比如当前chunk的page 0、page 2已经分配，则:`free_map[0] = 5`:
+`heap->free_map`实际就是：__zend_ulong free_map[16 or 8]__，以 __free_map[8]__ 为例，数组中的8个数字分别表示：0-63、64-127、128-191、192-255、256-319、320-383、384-447、448-511 page的分配与否，比如当前chunk的page 0、page 2已经分配，则:`free_map[0] = 5`:
 ```
 //5:
 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000101
