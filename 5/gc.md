@@ -120,3 +120,4 @@ unset($a);    //此时zend_array(refcount=0)且gc_info为GC_PURPLE，则从roots
 
 ![](../img/zend_gc_2.png)
 
+如果后面再有变量加入GC垃圾缓存区将优先使用第1个。
