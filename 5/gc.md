@@ -67,9 +67,9 @@ typedef struct _zend_refcounted_h {
 
 (3) 再次遍历buffer链表，将非GC_WHITE的节点从roots链表中删除，最终roots链表中全部为真正的垃圾，最后将这些垃圾清除。
 
-接下来我们简单看下垃圾回收的内部实现。
 
-垃圾收集器的全局数据结构：
+### 5.3.3 垃圾收集的内部实现
+接下来我们简单看下垃圾回收的内部实现，垃圾收集器的全局数据结构：
 ```c
 typedef struct _zend_gc_globals {
     zend_bool         gc_enabled; //是否启用gc
@@ -102,6 +102,9 @@ typedef struct _gc_root_buffer {
 
 * __(1)buf:__ 前面已经说过，当refcount减少后如果大于0那么就会将这个变量的value加入GC的垃圾缓存区，buf就是这个缓存区，它实际是一块连续的内存，在GC初始化时一次性分配了10001个gc_root_buffer，插入变量时直接从buf中取出可用节点；
 * __(2)roots:__ 垃圾缓存链表的头部，启动GC检查的过程就是从roots开始遍历的；
-* __(3)first_unused:__ 指向buf中第一个可用的节点，初始化时这个值为1而不是0，因为第一个gc_root_buffer保留没有使用，有元素插入roots时如果first_unused还没有到达buf的尾部则返回(buf+first_unused)给最新的元素，然后first_unused++，直到last_unused
+* __(3)first_unused:__ 指向buf中第一个可用的节点，初始化时这个值为1而不是0，因为第一个gc_root_buffer保留没有使用，有元素插入roots时如果first_unused还没有到达buf的尾部则返回first_unused给最新的元素，然后first_unused++，直到last_unused，比如现在已经加入了2个可能的垃圾变量，则对应的结构：
+
+![](../img/zend_gc_1.png)
+
 * __(4)last_unused:__ 与first_unused类似，指向buf末尾
 * __(5)unused:__ 
