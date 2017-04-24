@@ -107,4 +107,16 @@ typedef struct _gc_root_buffer {
 ![](../img/zend_gc_1.png)
 
 * __(4)last_unused:__ 与first_unused类似，指向buf末尾
-* __(5)unused:__ 
+* __(5)unused:__ GC收集变量时会依次从buf中获取可用的gc_root_buffer，这种情况直接取first_unused即可，但是有些变量加入垃圾缓存区之后其refcount又减为0了，这种情况就需要从roots中删掉，因为它不可能是垃圾，这样就导致roots链表并不是像buf分配的那样是连续的，中间会出现一些开始加入后面又删除的节点，这些节点就通过unused串成一个单链表，unused指向链表尾部，下次有新的变量插入roots时优先使用unused的这些节点，其次才是first_unused的，举个例子：
+```php
+$a = array(); //$a ->  zend_array(refcount=1)
+$b = $a;      //$a ->  zend_array(refcount=2)
+              //$b ->
+
+unset($b);    //此时zend_array(refcount=1)，因为refoucnt>0所以加入gc的垃圾缓存区：roots
+unset($a);    //此时zend_array(refcount=0)且gc_info为GC_PURPLE，则从roots链表中删掉
+```
+假如`unset($b)`时插入的是buf中第1个位置，那么`unset($a)`后对应的结构：
+
+![](../img/zend_gc_2.png)
+
