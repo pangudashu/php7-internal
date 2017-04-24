@@ -109,6 +109,7 @@ typedef struct _gc_root_buffer {
 * __(4)last_unused:__ 与first_unused类似，指向buf末尾
 * __(5)unused:__ GC收集变量时会依次从buf中获取可用的gc_root_buffer，这种情况直接取first_unused即可，但是有些变量加入垃圾缓存区之后其refcount又减为0了，这种情况就需要从roots中删掉，因为它不可能是垃圾，这样就导致roots链表并不是像buf分配的那样是连续的，中间会出现一些开始加入后面又删除的节点，这些节点就通过unused串成一个单链表，unused指向链表尾部，下次有新的变量插入roots时优先使用unused的这些节点，其次才是first_unused的，举个例子：
 ```php
+//示例1：
 $a = array(); //$a ->  zend_array(refcount=1)
 $b = $a;      //$a ->  zend_array(refcount=2)
               //$b ->
@@ -121,3 +122,66 @@ unset($a);    //此时zend_array(refcount=0)且gc_info为GC_PURPLE，则从roots
 ![](../img/zend_gc_2.png)
 
 如果后面再有变量加入GC垃圾缓存区将优先使用第1个。
+
+此GC机制可以通过php.ini中`zend.enable_gc`设置是否开启，如果开启则在php.ini解析后调用`gc_init()`进行GC初始化：
+```c
+ZEND_API void gc_init(void)
+{
+    if (GC_G(buf) == NULL && GC_G(gc_enabled)) {
+        //分配buf缓存区内存，大小为GC_ROOT_BUFFER_MAX_ENTRIES(10001)，其中第1个保留不被使用
+        GC_G(buf) = (gc_root_buffer*) malloc(sizeof(gc_root_buffer) * GC_ROOT_BUFFER_MAX_ENTRIES);
+        GC_G(last_unused) = &GC_G(buf)[GC_ROOT_BUFFER_MAX_ENTRIES];
+        //进行GC_G的初始化，其中：GC_G(first_unused) = GC_G(buf) + 1;从第2个开始的，第1个保留
+        gc_reset();
+    }
+}
+```
+在PHP的执行过程中，如果发现array、object减掉refcount后大于0则会调用`gc_possible_root()`将zend_value的gc头部加入GC垃圾缓存区：
+```c
+ZEND_API void ZEND_FASTCALL gc_possible_root(zend_refcounted *ref)
+{
+    gc_root_buffer *newRoot;
+
+    //插入的节点必须是GC_BLACK，防止重复插入
+    ZEND_ASSERT(EXPECTED(GC_REF_GET_COLOR(ref) == GC_BLACK));
+
+    newRoot = GC_G(unused); //先看下unused中有没有可用的
+    if (newRoot) {
+        //有的话先用unused的，然后将GC_G(unused)指向单链表的下一个
+        GC_G(unused) = newRoot->prev;
+    } else if (GC_G(first_unused) != GC_G(last_unused)) {
+        //unused没有可用的，且buf中还有可用的
+        newRoot = GC_G(first_unused);
+        GC_G(first_unused)++;
+    } else {
+        //buf缓存区已满，这时需要启动垃圾检查程序了，遍历roots，将真正的垃圾释放
+        //垃圾回收的动作就是在这触发的
+        if (!GC_G(gc_enabled)) {
+            return;
+        }
+        ...
+
+        //启动垃圾回收过程
+        gc_collect_cycles();
+        ...
+    } 
+
+    //将插入的ref标为紫色，防止重复插入
+    GC_TRACE_SET_COLOR(ref, GC_PURPLE);
+    //注意：gc_info不仅仅只有颜色的信息，还会记录当前gc_root_buffer在整个buf中的位置
+    //这样做的目的是可以直接根据zend_value的gc信息取到它的gc_root_buffer，便于进行删除操作
+    GC_INFO(ref) = (newRoot - GC_G(buf)) | GC_PURPLE;
+    newRoot->ref = ref;
+
+    //GC_G(roots).next指向新插入的元素
+    newRoot->next = GC_G(roots).next;
+    newRoot->prev = &GC_G(roots);
+    GC_G(roots).next->prev = newRoot;
+    GC_G(roots).next = newRoot;
+}
+```
+同一个zend_value只会插入一次，第2次插入时如果发现其gc_info不是GC_BLACK则直接跳过。另外像上面示例1的情况，插入后如果后面发现其refcount减为0了则表明它可以直接被回收掉，这时将需要从roots缓存区中删除，删除的操作通过`GC_REMOVE_FROM_BUFFER()`宏操作：
+```c
+
+```
+
