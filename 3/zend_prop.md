@@ -73,6 +73,8 @@ found:
 
 ![](../img/zend_dy_prop.png)
 
+> 这里不清楚将原有属性也插入properties的用意，已知用到的一个地方是在GC垃圾回收获取对象所有属性时(zend_std_get_gc())，如果有动态属性则直接返回properties给GC遍历，假如不把普通的显式定义的属性"拷贝"进来则需要返回、遍历两个数组。
+
 成员属性的读取通过`zend_object->handlers->read_property`(默认zend_std_read_property())函数完成，动态属性的查找过程实际与`write_property`中相同：
 ```c
 zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_slot, zval *rv)
