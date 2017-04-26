@@ -69,7 +69,7 @@ found:
     }
 }
 ```
-上面就是成员属性的修改过程，普通属性根据其offset再从对象中取出属性值进行修改，而首次创建动态属性将通过`rebuild_object_properties()`初始化`zend_object->properties`哈希表，后面再创建动态属性直接插入此哈希表，`rebuild_object_properties()`过程并不仅仅是创建一个HashTable，还会将普通成员属性值插入到这个数组中，这里的插入并不是增加原zend_value的refcount，而是创建了一个IS_INDIRECT类型的zval，指向原属性值zval，具体结构如下图。
+上面就是成员属性的修改过程，普通属性根据其offset再从对象中取出属性值进行修改，而首次创建动态属性将通过`rebuild_object_properties()`初始化`zend_object->properties`哈希表，后面再创建动态属性直接插入此哈希表，`rebuild_object_properties()`过程并不仅仅是创建一个HashTable，还会将普通成员属性值插入到这个数组中，与动态属性不同，这里的插入并不是增加原zend_value的refcount，而是创建了一个IS_INDIRECT类型的zval，指向原属性值zval，具体结构如下图。
 
 ![](../img/zend_dy_prop.png)
 

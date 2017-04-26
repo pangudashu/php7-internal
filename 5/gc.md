@@ -162,7 +162,7 @@ ZEND_API void ZEND_FASTCALL gc_possible_root(zend_refcounted *ref)
         ...
 
         //启动垃圾回收过程
-        gc_collect_cycles();
+        gc_collect_cycles(); //即：zend_gc_collect_cycles()
         ...
     } 
 
@@ -180,8 +180,65 @@ ZEND_API void ZEND_FASTCALL gc_possible_root(zend_refcounted *ref)
     GC_G(roots).next = newRoot;
 }
 ```
-同一个zend_value只会插入一次，第2次插入时如果发现其gc_info不是GC_BLACK则直接跳过。另外像上面示例1的情况，插入后如果后面发现其refcount减为0了则表明它可以直接被回收掉，这时将需要从roots缓存区中删除，删除的操作通过`GC_REMOVE_FROM_BUFFER()`宏操作：
+同一个zend_value只会插入一次，再次插入时如果发现其gc_info不是GC_BLACK则直接跳过。另外像上面示例1的情况，插入后如果后面发现其refcount减为0了则表明它可以直接被回收掉，这时需要把这个节点从roots链表中删除，删除的操作通过`GC_REMOVE_FROM_BUFFER()`宏操作：
 ```c
+#define GC_REMOVE_FROM_BUFFER(p) do { \
+    zend_refcounted *_p = (zend_refcounted*)(p); \
+        if (GC_ADDRESS(GC_INFO(_p))) { \
+            gc_remove_from_buffer(_p); \
+        } \
+} while (0)
 
+ZEND_API void ZEND_FASTCALL gc_remove_from_buffer(zend_refcounted *ref)
+{
+    gc_root_buffer *root;
+
+    //GC_ADDRESS就是获取节点在缓存区中的位置，因为删除时输入是zend_refcounted
+    //而缓存链表的节点类型是gc_root_buffer
+    root = GC_G(buf) + GC_ADDRESS(GC_INFO(ref));
+    if (GC_REF_GET_COLOR(ref) != GC_BLACK) {
+        GC_TRACE_SET_COLOR(ref, GC_PURPLE);
+    }
+    GC_INFO(ref) = 0;
+    GC_REMOVE_FROM_ROOTS(root); //双向链表的删除操作
+    ...
+}
 ```
+插入时如果发现垃圾缓存链表已经满了，则会启动垃圾回收过程：`zend_gc_collect_cycles()`，这个过程会对之前插入缓存区的变量进行判断是否是循环引用导致的真正的垃圾，如果是垃圾则会进行回收，回收的过程前面已经介绍过:
+```c
+ZEND_API int zend_gc_collect_cycles(void)
+{
+    ...
+    //(1)遍历roots链表，对当前节点value的所有成员(如数组元素、成员属性)进行深度优先遍历把成员refcount减1
+    gc_mark_roots();
+
+    //(2)再次遍历roots链表，检查各节点当前refcount是否为0，是的话标为白色，表示是垃圾，不是的话需要对还原(1)，把refcount再加回去
+    gc_scan_roots();
+
+    //(3)将roots链表中的非白色节点删除，之后roots链表中全部是真正的垃圾，将垃圾链表转到to_free等待释放
+    count = gc_collect_roots(&gc_flags, &additional_buffer);
+    ...
+    
+    //(4)释放垃圾
+    current = to_free.next;
+    while (current != &to_free) {
+        p = current->ref;
+        GC_G(next_to_free) = current->next;
+        if ((GC_TYPE(p) & GC_TYPE_MASK) == IS_OBJECT) {
+            //调用free_obj释放对象
+            obj->handlers->free_obj(obj);
+            ...
+        } else if ((GC_TYPE(p) & GC_TYPE_MASK) == IS_ARRAY) {
+            //释放数组
+            zend_array *arr = (zend_array*)p;
+
+            GC_TYPE(arr) = IS_NULL;
+            zend_hash_destroy(arr);
+        }
+        current = GC_G(next_to_free);
+    }
+    ...
+}
+```
+各步骤具体的过程不再详细介绍，
 
