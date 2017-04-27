@@ -298,7 +298,7 @@ zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_
 
 > __Note:__ 如果类存在__get()方法，则在实例化对象分配属性内存(即:properties_table)时会多分配一个zval，类型为HashTable，每次调用__get($var)时会把输入的$var名称存入这个哈希表，这样做的目的是防止循环调用，举个例子：
 > 
-> __public function __get($var) { return $this->$var; }__
+> ***public function __get($var) { return $this->$var; }***
 >
 > 这种情况是调用__get()时又访问了一个不存在的属性，也就是会在__get()方法中递归调用，如果不对请求的$var作判断则将一直递归下去，所以在调用__get()前首先会判断当前$var是不是已经被__get()了，如果是则不会再调用__get()。
 
