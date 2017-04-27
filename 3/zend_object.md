@@ -260,6 +260,7 @@ zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_
     zobj = Z_OBJ_P(object);
 
     //根据属性名在zend_class.zend_property_info中查找zend_property_info，得到属性值在zend_object中的存储offset
+    //注意：zend_get_property_offset()会对属性的可见性(public、private、protected)进行验证
     property_offset = zend_get_property_offset(zobj->ce, Z_STR_P(member), (type == BP_VAR_IS) || (zobj->ce->__get != NULL), cache_slot);
 
     if (EXPECTED(property_offset != ZEND_WRONG_PROPERTY_OFFSET)) {
@@ -294,13 +295,20 @@ zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_
     ...
 }
 ```
-普通成员属性的查找比较容易理解，首先是从zend_class的属性信息哈希表中找到zend_property_info，然后直接根据属性的offset在zend_object.properties_table数组中取到属性值，如果没有在属性哈希表中找到且定义了__get()魔术方法则会调用此方法处理。
+普通成员属性的查找比较容易理解，首先是从zend_class的属性信息哈希表中找到zend_property_info，并判断其可见性(public、private、protected)，如果可以访问则直接根据属性的offset在zend_object.properties_table数组中取到属性值，如果没有在属性哈希表中找到且定义了__get()魔术方法则会调用__get()方法处理。
 
 > __Note:__ 如果类存在__get()方法，则在实例化对象分配属性内存(即:properties_table)时会多分配一个zval，类型为HashTable，每次调用__get($var)时会把输入的$var名称存入这个哈希表，这样做的目的是防止循环调用，举个例子：
 > 
 > ***public function __get($var) { return $this->$var; }***
 >
-> 这种情况是调用__get()时又访问了一个不存在的属性，也就是会在__get()方法中递归调用，如果不对请求的$var作判断则将一直递归下去，所以在调用__get()前首先会判断当前$var是不是已经被__get()了，如果是则不会再调用__get()。
+> 这种情况是调用__get()时又访问了一个不存在的属性，也就是会在__get()方法中递归调用，如果不对请求的$var作判断则将一直递归下去，所以在调用__get()前首先会判断当前$var是不是已经被__get()了，如果是则不会再调用__get()，否则会把$var作为key插入那个HashTable，然后将哈希值设置为：*guard |= IN_ISSET，调用完__get()再把哈希值设置为：*guard &= ~IN_ISSET。
+
+__(2)设置属性：__ 
+
+设置属性是对属性的修改操作，默认通过zend_std_write_property()处理，比如：`$obj->name = "pangudashu";`，看下具体的实现过程：
+```c
+
+```
 
 #### 3.4.2.4 对象的复制
 PHP中普通变量的复制可以通过直接赋值完成，比如：
