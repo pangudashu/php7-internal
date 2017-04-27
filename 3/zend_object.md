@@ -176,7 +176,7 @@ ZEND_API zend_object *zend_objects_new(zend_class_entry *ce)
     return object;
 }
 ```
-有个地方这里需要特别注意：分配对象结构的内存并不仅仅是zend_object的大小。我们在3.4.2.1介绍properties_table时说过这是一个变长数组，它用来存放非静态属性的值，所以分配zend_object时需要加上非静态属性所占用的内存大小：`zend_object_properties_size()`(实际就是zend_class_entry.default_properties_count)。
+有个地方这里需要特别注意：分配对象结构的内存并不仅仅是zend_object的大小。我们在3.4.2.1介绍properties_table时说过这是一个变长数组，它用来存放非静态属性的值，所以分配zend_object时需要加上非静态属性所占用的内存大小：`zend_object_properties_size()`，根据普通非静态属性个数确定，如果没有定义__get()、__set()等魔术方法则占用内存就是: __属性数*sizeof(zval)__ ，如果定义了这些魔术方法那么会多分配一个zval的空间，这个多出来zval的用途下面介绍成员属性的读写时再作说明。
 
 另外这里还有一个关键操作：__将object编号并插入EG(objects_store).object_buckets数组__。zend_object有个成员：handle，这个值在一次request期间所有实例化对象的编号，每调用`zend_objects_new()`实例化一个对象就会将其插入到object_buckets数组中，其在数组中的下标就是handle。这个过程是在`zend_objects_store_put()`中完成的。
 ```c
@@ -245,7 +245,63 @@ ZEND_API void object_properties_init(zend_object *object, zend_class_entry *clas
 * __step4:__ 查找当前类是否定义了构造函数，如果没有定义则跳过执行构造函数的opcode，否则为调用构造函数的执行进行一些准备工作(分配zend_execute_data)
 * __step5:__ 实例化完成，返回新实例化的对象(如果返回的对象没有变量使用则直接释放掉了)
 
-#### 3.4.2.3 对象的复制
+#### 3.4.2.3 成员属性的读写
+普通成员属性的读写处理handler分别为`zend_object.handlers`中的：read_property、write_property，默认对应的函数为：zend_std_read_property()、zend_std_write_property()，访问获取修改一个普通成员属性时就是由这两个函数完成的。
+
+__(1)读取属性：__ 
+
+比如：`echo $obj->name;`，先看下具体代码的实现：
+```c
+zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_slot, zval *rv)
+{
+    zend_object *zobj;
+    uint32_t property_offset;
+
+    zobj = Z_OBJ_P(object);
+
+    //根据属性名在zend_class.zend_property_info中查找zend_property_info，得到属性值在zend_object中的存储offset
+    property_offset = zend_get_property_offset(zobj->ce, Z_STR_P(member), (type == BP_VAR_IS) || (zobj->ce->__get != NULL), cache_slot);
+
+    if (EXPECTED(property_offset != ZEND_WRONG_PROPERTY_OFFSET)) {
+        if (EXPECTED(property_offset != ZEND_DYNAMIC_PROPERTY_OFFSET)) {
+            //普通属性，直接根据offset取到属性值：((zval*)((char*)(zobj) + offset))
+            retval = OBJ_PROP(zobj, property_offset);
+        } else if (EXPECTED(zobj->properties != NULL)) {
+            //动态属性的情况，没有在类中显式定义的属性，后面一节会单独介绍
+            ....
+        }
+    } else if (UNEXPECTED(EG(exception))) {
+        ...
+    }
+
+    //没有找到属性
+    //调用魔术方法：__isset()
+    if ((type == BP_VAR_IS) && zobj->ce->__isset) {
+        ...
+    }
+
+    //调用魔术方法：__get()
+    if (zobj->ce->__get) {
+        zend_long *guard = zend_get_property_guard(zobj, Z_STR_P(member));
+        ...
+        if(!((*guard) & IN_ISSET)){
+            *guard |= IN_ISSET;
+            zend_std_call_issetter(&tmp_object, member, &tmp_result);
+            *guard &= ~IN_ISSET;
+            ...
+        }
+    }
+    ...
+}
+```
+普通成员属性的查找比较容易理解，首先是从zend_class的属性信息哈希表中找到zend_property_info，然后直接根据属性的offset在zend_object.properties_table数组中取到属性值，如果没有在属性哈希表中找到且定义了__get()魔术方法则会调用此方法处理。
+
+> __Note:__ 如果类存在__get()方法，则在实例化对象分配属性内存(即:properties_table)时会多分配一个zval，类型为HashTable，每次调用__get($var)时会把输入的$var名称存入这个哈希表，这样做的目的是防止循环调用，举个例子：
+> public function __get($var) {
+      return $this->$var;
+> }
+
+#### 3.4.2.4 对象的复制
 PHP中普通变量的复制可以通过直接赋值完成，比如：
 ```php
 $a = array();
@@ -295,7 +351,7 @@ ZEND_API zend_object *zend_objects_clone_obj(zval *zobject)
     return new_object;
 }
 ```
-#### 3.4.2.4 对象比较
+#### 3.4.2.5 对象比较
 当使用比较运算符（==）比较两个对象变量时，比较的原则是：如果两个对象的属性和属性值 都相等，而且两个对象是同一个类的实例，那么这两个对象变量相等；而如果使用全等运算符（===），这两个对象变量一定要指向某个类的同一个实例（即同一个对象）。
 
 PHP中对象间的"=="比较通过函数`zend_std_compare_objects()`处理。
@@ -318,7 +374,7 @@ static int zend_std_compare_objects(zval *o1, zval *o2)
 ```
 "==="的比较通过函数`zend_is_identical()`处理，比较简单，这里不再展开。
 
-#### 3.4.2.5 对象的销毁
+#### 3.4.2.6 对象的销毁
 object与string、array等类型不同，它是个符合类型，所以它的销毁过程更加复杂，赋值、函数调用结束或主动unset等操作中如果发现object引用计数为0则将触发销毁动作。
 ```php
 //情况1
