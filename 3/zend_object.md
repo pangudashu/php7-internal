@@ -329,6 +329,7 @@ ZEND_API void zend_std_write_property(zval *object, zval *member, zval *value, v
             ...
             if ((variable_ptr = zend_hash_find(zobj->properties, Z_STR_P(member))) != NULL) {
 found:
+                //赋值操作，与普通变量的操作相同
                 zend_assign_to_variable(variable_ptr, value, IS_CV);
                 goto exit;
             }
@@ -352,6 +353,8 @@ found:
     }
 }
 ```
+首先与读取属性的操作相同：先找到zend_property_info，判断其可见性，然后根据offset取到具体的属性值，最后对其进行赋值修改。
+
 > __Note:__ 属性读写操作的函数中有一个cache_slot的参数，它的作用涉及PHP的一个缓存机制：运行时缓存，后面会单独介绍。
 
 #### 3.4.2.4 对象的复制
