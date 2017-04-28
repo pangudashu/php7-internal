@@ -250,7 +250,7 @@ ZEND_API void object_properties_init(zend_object *object, zend_class_entry *clas
 
 __(1)读取属性：__ 
 
-比如：`echo $obj->name;`，先看下具体代码的实现：
+通过对象或方法内通过$this访问属性，比如：`echo $obj->name;`，具体的实现：
 ```c
 zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_slot, zval *rv)
 {
@@ -301,14 +301,58 @@ zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_
 > 
 > ***public function __get($var) { return $this->$var; }***
 >
-> 这种情况是调用__get()时又访问了一个不存在的属性，也就是会在__get()方法中递归调用，如果不对请求的$var作判断则将一直递归下去，所以在调用__get()前首先会判断当前$var是不是已经被__get()了，如果是则不会再调用__get()，否则会把$var作为key插入那个HashTable，然后将哈希值设置为：*guard |= IN_ISSET，调用完__get()再把哈希值设置为：*guard &= ~IN_ISSET。
+> 这种情况是调用__get()时又访问了一个不存在的属性，也就是会在__get()方法中递归调用，如果不对请求的$var作判断则将一直递归下去，所以在调用__get()前首先会判断当前$var是不是已经在__get()中了，如果是则不会再调用__get()，否则会把$var作为key插入那个HashTable，然后将哈希值设置为：*guard |= IN_ISSET，调用完__get()再把哈希值设置为：*guard &= ~IN_ISSET。
 
 __(2)设置属性：__ 
 
-设置属性是对属性的修改操作，默认通过zend_std_write_property()处理，比如：`$obj->name = "pangudashu";`，看下具体的实现过程：
+与读取属性不同，设置属性是对属性的修改操作，比如：`$obj->name = "pangudashu";`，看下具体的实现过程：
 ```c
+ZEND_API void zend_std_write_property(zval *object, zval *member, zval *value, void **cache_slot)
+{
+    zend_object *zobj;
+    uint32_t property_offset;
 
+    zobj = Z_OBJ_P(object);
+
+    //与读取属性相同
+    property_offset = zend_get_property_offset(zobj->ce, Z_STR_P(member), (zobj->ce->__set != NULL), cache_slot);
+
+    if (EXPECTED(property_offset != ZEND_WRONG_PROPERTY_OFFSET)) {
+        if (EXPECTED(property_offset != ZEND_DYNAMIC_PROPERTY_OFFSET)) {
+            //普通属性
+            variable_ptr = OBJ_PROP(zobj, property_offset);
+            if (Z_TYPE_P(variable_ptr) != IS_UNDEF) {
+                goto found;
+            }
+        } else if (EXPECTED(zobj->properties != NULL)) {
+            //动态属性哈希表已经初始化，直接插入zobj->properties哈希表,后面单独介绍
+            ...
+            if ((variable_ptr = zend_hash_find(zobj->properties, Z_STR_P(member))) != NULL) {
+found:
+                zend_assign_to_variable(variable_ptr, value, IS_CV);
+                goto exit;
+            }
+        }
+    } else if (UNEXPECTED(EG(exception))) {
+        ...
+    }
+
+    //没有找到属性
+    //如果定义了__set()则调用
+    if (zobj->ce->__set) {
+        //与__get()相同，也会判断set的变量名是否已经在__set()中
+        ...
+        ZVAL_COPY(&tmp_object, object);
+        (*guard) |= IN_SET; //防止循环__set()
+        if (zend_std_call_setter(&tmp_object, member, value) != SUCCESS) {
+        }
+        (*guard) &= ~IN_SET;
+    }else if (EXPECTED(property_offset != ZEND_WRONG_PROPERTY_OFFSET)) {
+        ...
+    }
+}
 ```
+> __Note:__ 属性读写操作的函数中有一个cache_slot的参数，它的作用涉及PHP的一个缓存机制：运行时缓存，后面会单独介绍。
 
 #### 3.4.2.4 对象的复制
 PHP中普通变量的复制可以通过直接赋值完成，比如：
@@ -429,5 +473,3 @@ ZEND_API void zend_objects_store_del(zend_object *object)
 }
 ```
 另外，在减少refcount时如果发现object的引用计数大于0那么并不是什么都不做了，还记得2.1.3.4介绍的垃圾回收吗？PHP变量类型有的会因为循环引用导致正常的gc无法生效，这种类型的变量就有可能成为垃圾，所以会对这些类型的`zval.u1.type_flag`打上`IS_TYPE_COLLECTABLE`标签，然后在减少引用时即使refcount大于0也会启动垃圾检查，目前只有object、array两种类型会使用这种机制。
-
-
