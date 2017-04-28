@@ -18,5 +18,6 @@ IF的语句有两部分组成：condition(条件)、statement(声明)，多个el
 
 ![](../img/if.png)
 
+![](../img/if_run.png)
 
 ### 4.2.2 switch语句
