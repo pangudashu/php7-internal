@@ -34,7 +34,7 @@
       * 3.4.6 抽象类和接口
       * [3.4.7 类的自动加载](3/zend_autoload.md)
    * [3.5 运行时缓存](3/zend_runtime_cache.md)
-* [第4章 PHP基础语法实现](4/php_language.md)
+* 第4章 PHP基础语法实现
    * 4.1 运算符
    * 4.2 选择结构
    * 4.3 循环结构
