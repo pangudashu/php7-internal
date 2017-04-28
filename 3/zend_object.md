@@ -302,6 +302,8 @@ zval *zend_std_read_property(zval *object, zval *member, int type, void **cache_
 > ***public function __get($var) { return $this->$var; }***
 >
 > 这种情况是调用__get()时又访问了一个不存在的属性，也就是会在__get()方法中递归调用，如果不对请求的$var作判断则将一直递归下去，所以在调用__get()前首先会判断当前$var是不是已经在__get()中了，如果是则不会再调用__get()，否则会把$var作为key插入那个HashTable，然后将哈希值设置为：*guard |= IN_ISSET，调用完__get()再把哈希值设置为：*guard &= ~IN_ISSET。
+>
+> 这个HashTable不仅仅是给__get()用的，其它魔术方法也会用到，所以其哈希值类型是zend_long，不同的魔术方法占不同的bit位；其次，并不是所有的对象都会额外分配这个HashTable，在对象创建时会根据***zend_class_entry.ce_flags***是否包含***ZEND_ACC_USE_GUARDS***确定是否分配，在类编译时如果发现定义了__get()、__set()、__unset()、__isset()方法则会将ce_flags打上这个掩码。
 
 __(2)设置属性：__ 
 
