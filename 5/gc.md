@@ -240,5 +240,30 @@ ZEND_API int zend_gc_collect_cycles(void)
     ...
 }
 ```
-各步骤具体的过程不再详细介绍，
+各步骤具体的操作不再详细展开，这里单独说明下value成员的遍历，array比较好理解，所有成员都在arData数组中，直接遍历arData即可，如果各元素仍是array、object或者引用则一直递归进行深度优先遍历；object的成员指的成员属性（不包括静态属性、常量，它们属于类而不属于对象），前面介绍对象的实现时曾说过，成员属性除了明确的在类中定义的那些外还可以动态创建，动态属性保存于zend_obejct->properties哈希表中，普通属性保存于zend_object.properties_table数组中，这样以来object的成员就分散在两个位置，那么遍历时是分别遍历吗？答案是否定的。
 
+实际前面已经简单提过，在创建动态属性时会把全部普通属性也加到zend_obejct->properties哈希表中，指向原zend_object.properties_table中的属性，这样一来GC遍历object的成员时就可以像array那样遍历zend_obejct->properties即可，GC获取object成员的操作由get_gc(即：zend_std_get_gc())完成：
+```c
+ZEND_API HashTable *zend_std_get_gc(zval *object, zval **table, int *n)
+{   
+    if (Z_OBJ_HANDLER_P(object, get_properties) != zend_std_get_properties) {
+        *table = NULL;
+        *n = 0;                             
+        return Z_OBJ_HANDLER_P(object, get_properties)(object);
+    } else {
+        zend_object *zobj = Z_OBJ_P(object);
+
+        if (zobj->properties) {             
+            //有动态属性
+            *table = NULL;
+            *n = 0;
+            return zobj->properties;
+        } else {
+            //没有定义过动态属性，返回数组
+            *table = zobj->properties_table;
+            *n = zobj->ce->default_properties_count;
+            return NULL;
+        }
+    }
+}
+```
