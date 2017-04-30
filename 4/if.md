@@ -146,5 +146,14 @@ case_separator:
 
 ![](../img/ast_switch.png)
 
+与if不同，switch不会像if那样依次把每个分支编译为一组组的condition、statement，而是会先编译全部case的value表达式，再编译全部case的statement，编译过程大致如下：
+
+* (1)首先编译expression，其最终将得到一个固定的value；
+* (2)依次编译每个case的value，如果value是一个表达式则编译expression，与(1)相同，执行时其最终也是一个固定的value，每个case编译一条ZEND_CASE的opcode，除了这条opcode还会编译出一条ZEND_JMPNZ的opcode，这条opcode用来跳到当前case的statement的开始位置，但是statement在这时还未编译，所以ZEND_JMPNZ的跳转值暂不确定；
+* (3)编译完全部case的value后接着从头开始编译每个case的statement，编译前首先设置步骤(2)中ZEND_JMPNZ的跳转值为当前statement起始位置。
+
+具体编译过程在`zend_compile_switch()`中，这里不再展开，编译后的基本结构如下：
+
+![](../img/switch_run.png)
 
 
