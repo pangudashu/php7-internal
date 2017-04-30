@@ -156,4 +156,13 @@ case_separator:
 
 ![](../img/switch_run.png)
 
+执行时首先如果switch的是一个表达式则会首先执行表达式的语句，然后再拿最终的结果逐个与case的值比较，如果case也是一个表达式则也先执行表达式，执行完再与switch的值比较，比较结果如果为true则跳到当前case的statement位置开始顺序执行，如果结果为false则继续向下执行，与下一个case比较，以此类推。
+
+> __Note:__
+>
+> __(1)__ case不管是表达式还是固定的值其最终比较时是一样的，如果是表达式则将其执行完以后再作比较，也就是说switch并不支持case多个值的用法，比如：case value1 || value2 : statement，这么写首先是会执行(value1 || value2)，然后把结果与switch的值比较，并不是指switch的值等于value1或value2，这个地方一定要注意，如果想命中多个value只能写到不同case下
+>
+> __(2)__ switch的value与case的value比较用的是"=="，而不是"==="
+
+
 
