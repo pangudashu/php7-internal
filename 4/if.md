@@ -93,6 +93,58 @@ void zend_compile_if(zend_ast *ast)
 
 执行时依次判断各分支条件是否成立，成立则执行当前分支statement，执行完后跳到if外语句；不成立则调到下一分支继续判断是否成立，以此类推。不管各分支条件有几个，其最终都会归并为一个结果，也就是每个分支只需要判断最终的条件值是否为true即可，而多个条件计算得到最终值的过程就是普通的逻辑运算。
 
-> __Note:__ 注意elseif与else if，上面介绍的是elseif的编译，而else if则实际相当于嵌套了一个if，也就是说一个if的分支中包含了另外一个if，在编译、执行的过程中是有差别的。
+> __Note:__ 注意elseif与else if，上面介绍的是elseif的编译，而else if则实际相当于嵌套了一个if，也就是说一个if的分支中包含了另外一个if，在编译、执行的过程中这两个是有差别的。
 
 ### 4.2.2 switch语句
+switch语句与if类似，都是条件语句，很多时候需要将一个变量或者表达式与不同的值进行比较，根据不同的值执行不同的代码，这种场景下用if、switch都可以实现，但switch相对更加直观。
+
+switch语法：
+```php
+switch(expression){
+    case value1:
+        statement1;
+    case value2:
+        statement2;
+    ...
+    default:
+        statementn;
+}
+```
+这里并没有将break加入到switch的语法中，因为严格意义上break并不是switch的一部分，break属于另外一类单独的语法：中断语法，PHP中如果没有在switch中加break则执行时会从命中的那个case开始一直执行到结束，这与很多其它的语言不同(比如：golang)。
+
+从switch的语法可以看出，switch主要包含两部分：expression、case list，case list包含多个case，每个case包含value、statement两部分。expression是一个表达式，但它将在case对比前执行，所以switch最终执行时就是拿expression的值逐个与case的value比较，如果相等则从命中case的statement开始向下执行。
+
+下面看下switch的语法规则：
+```c
+statement:
+    ...
+    |   T_SWITCH '(' expr ')' switch_case_list { $$ = zend_ast_create(ZEND_AST_SWITCH, $3, $5); }
+    ...
+;
+
+switch_case_list:
+        '{' case_list '}'                   { $$ = $2; }
+    |   '{' ';' case_list '}'               { $$ = $3; }
+    |   ':' case_list T_ENDSWITCH ';'       { $$ = $2; }
+    |   ':' ';' case_list T_ENDSWITCH ';'   { $$ = $3; }
+;
+
+case_list:
+        /* empty */ { $$ = zend_ast_create_list(0, ZEND_AST_SWITCH_LIST); }
+    |   case_list T_CASE expr case_separator inner_statement_list
+            { $$ = zend_ast_list_add($1, zend_ast_create(ZEND_AST_SWITCH_CASE, $3, $5)); }
+    |   case_list T_DEFAULT case_separator inner_statement_list
+            { $$ = zend_ast_list_add($1, zend_ast_create(ZEND_AST_SWITCH_CASE, NULL, $4)); }
+;
+
+case_separator:
+        ':'
+    |   ';'
+;
+```
+从语法解析规则可以看出，switch最终被解析为一个`ZEND_AST_SWITCH`节点，这个节点主要包含两个子节点：expression、case list，其中expression节点比较简单，case list节点对应一个`ZEND_AST_SWITCH_LIST`节点，这个节点是一个list，有多个case子节点，每个case节点对应一个`ZEND_AST_SWITCH_CASE`节点，包括value（或expr）、statement两个子节点，生成的AST如下：
+
+![](../img/ast_switch.png)
+
+
+
