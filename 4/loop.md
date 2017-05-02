@@ -28,8 +28,13 @@ while_statement:
 
 ![](../img/ast_while.png)
 
-while编译的过程也比较简单，编译过程大致如下：
+while编译的过程也比较简单，比较特别的是while首先编译的是循环体，然后才是循环判断条件，更像是do while，编译过程大致如下：
+* (1) 首先编译一条ZEND_JMP的opcode，这条opcode用来跳到循环判断条件expression的位置，由于while是先编译循环体再编译循环条件，所以此时还无法确定具体的跳转值；
+* (2) 编译循环体statement；编译完成后更新步骤(1)中ZEND_JMP的跳转值；
+* (3) 编译循环判断条件expression；
+* (4) 编译一条ZEND_JMPNZ的opcode，这条opcode用于循环判断条件执行完以后跳到循环体的，如果循环条件成立则通过此opcode跳到循环体开始的位置，否则继续往下执行(即：跳出循环)。
 
+具体的编译过程：
 ```c
 void zend_compile_while(zend_ast *ast)
 {   
@@ -38,19 +43,23 @@ void zend_compile_while(zend_ast *ast)
     znode cond_node;
     uint32_t opnum_start, opnum_jmp, opnum_cond;
     
+    //(1)编译ZEND_JMP
     opnum_jmp = zend_emit_jump(0);
     
-    zend_begin_loop(ZEND_NOP, NULL);
-    
+    //(2)编译循环体statement，opnum_start为循环体起始位置
     opnum_start = get_next_op_number(CG(active_op_array));
     zend_compile_stmt(stmt_ast);
     
+    //设置ZEND_JMP opcode的跳转值
     opnum_cond = get_next_op_number(CG(active_op_array));
     zend_update_jump_target(opnum_jmp, opnum_cond);
+
+    //(3)编译循环条件expression
     zend_compile_expr(&cond_node, cond_ast);
     
+    //(4)编译ZEND_JMPNZ，用于循环条件成立时跳回循环体开始位置：opnum_start
     zend_emit_cond_jump(ZEND_JMPNZ, &cond_node, opnum_start);
-    
-    zend_end_loop(opnum_cond);
 }
 ```
+
+
