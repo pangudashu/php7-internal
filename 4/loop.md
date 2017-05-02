@@ -77,5 +77,39 @@ void zend_compile_while(zend_ast *ast)
 > 
 > 上面的例子如果`$a = '123';`就不会快速进行处理了，而是按照正常的逻辑调用ZEND_JMPNZ。
 
+### 4.3.2 do while循环
+do while与while非常相似，唯一的区别在于do while第一次执行时不需要判断循环条件。
+
+do while循环的语法：
+```php
+do{
+    statement;//循环体
+}while(expression) 
+```
+do while编译过程与while的基本一致，不同的地方在于do while没有`ZEND_JMP`这条opcode：
+```c
+void zend_compile_do_while(zend_ast *ast)
+{
+    zend_ast *stmt_ast = ast->child[0];
+    zend_ast *cond_ast = ast->child[1];
+
+    znode cond_node;
+    uint32_t opnum_start, opnum_cond;
+
+    //(1)编译循环体statement，opnum_start为循环体起始位置
+    opnum_start = get_next_op_number(CG(active_op_array));
+    zend_compile_stmt(stmt_ast);
+
+    //(2)编译循环判断条件expression
+    opnum_cond = get_next_op_number(CG(active_op_array));
+    zend_compile_expr(&cond_node, cond_ast);
+
+    //(3)编译ZEND_JMPNZ
+    zend_emit_cond_jump(ZEND_JMPNZ, &cond_node, opnum_start);
+}
+```
+编译后的结果：
+
+![](../img/do_run.png)
 
 
