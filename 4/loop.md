@@ -191,4 +191,7 @@ void zend_compile_for(zend_ast *ast)
 
 运行时首先执行初始化表达式：init expression，然后执行`ZEND_JMP`跳到循环条件expression处，如果条件成立则执行`ZEND_JMPNZ`跳到循环体起始位置依次执行循环体、loop expression，如果条件不成立则终止循环，第一次循环之后就是：`循环条件->ZEND_JMPNZ->循环体->loop expression`之间循环了。
 
+### 4.3.4 foreach循环
+
+
 
