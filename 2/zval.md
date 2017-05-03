@@ -163,7 +163,7 @@ struct _zend_resource {
 对象比较常见，资源指的是tcp连接、文件句柄等等类型，这种类型比较灵活，可以随意定义struct，通过ptr指向，后面会单独分析这种类型，这里不再多说。
 
 #### 2.1.2.5 引用
-引用是PHP中比较特殊的一种类型，它实际是指向另外一个PHP变量，对它的修改会直接改动实际指向的zval，可以简单的理解为C中的指针，在PHP中通过`&`操作符产生一个引用变量，也就是说不管以前的类型是什么，`&`首先会将新生成一个zval，类型为IS_REFERENCE，然后将val的value指向原来zval的value。
+引用是PHP中比较特殊的一种类型，它实际是指向另外一个PHP变量，对它的修改会直接改动实际指向的zval，可以简单的理解为C中的指针，在PHP中通过`&`操作符产生一个引用变量，也就是说不管以前的类型是什么，`&`首先会将新生成一个zval，类型为IS_REFERENCE，然后将新的zval的value指向原来zval的value。
 ```c
 struct _zend_reference {
     zend_refcounted_h gc;
