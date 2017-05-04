@@ -130,5 +130,14 @@ static uint32_t zend_get_brk_cont_target(const zend_op_array *op_array, const ze
     return opline->opcode == ZEND_BRK ? jmp_to->brk : jmp_to->cont;
 }
 ```
+上面那个例子最终执行前的opcode如下图：
+
+![](../img/break_run.png)
+
+执行时直接跳到对应的opcode位置即可。
 
 ### 4.4.2 goto
+goto 操作符可以用来跳转到程序中的另一位置。该目标位置可以用目标名称加上冒号来标记，而跳转指令是 goto 之后接上目标位置的标记。PHP 中的 goto 有一定限制，目标位置只能位于同一个文件和作用域，也就是说无法跳出一个函数或类方法，也无法跳入到另一个函数，可以跳出循环但无法跳入循环，多层循环中通常会用goto代替多层break。
+
+
+
