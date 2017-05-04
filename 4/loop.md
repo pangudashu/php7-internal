@@ -235,26 +235,26 @@ foreach($arr as $k=>$v){
 
 ![](../img/foreach_ref_struct.png)
 
-清楚了foreach的实现、运行机制我们再回头看下其编译过程：
+了解了foreach的实现、运行机制我们再回头看下其编译过程：
 
-* (1) 编译"拷贝"数组/对象操作的opcode：`ZEND_FE_RESET_R`，如果value是引用则是`ZEND_FE_RESET_RW`，执行时如果发现数组或对象属性为空则直接跳出遍历，所以这条opcode还需要知道跳出的位置，这个位置需要编译完foreach以后才能确定；
-* (2) 编译fetch数组/对象当前单元key、value的opcode：`ZEND_FE_FETCH_R`，如果是引用则是`ZEND_FE_FETCH_RW`，此opcode还需要知道当遍历已经到达数组末尾时跳出遍历的位置，与步骤(1)的opcode相同,另外还有一个关键操作，前面已经说过遍历的key、value实际就是普通的局部变量，它们的内存存储位置正是在这一步分配确定的，分配过程与普通局部变量的过程完全相同，如果value不是一个CV变量(比如：foreach($arr as $v["xx"]){...})则还会编译其它操作的opcode；
-* (3) 如果foreach定义了key则编译一条赋值opcode，此操作是对key进行赋值；
-* (4) 编译循环体statement；
-* (5) 编译跳回遍历开始位置的opcode：`ZEND_JMP`，一次遍历结束时会跳回步骤(2)编译的opcode处进行下次遍历；
-* (6) 设置步骤(1)、(2)两条opcode跳过的opcode数；
-* (7) 编译`ZEND_FE_FREE`，此操作用于释放步骤(1)"拷贝"的数组。
+* __(1)__ 编译"拷贝"数组/对象操作的opcode：`ZEND_FE_RESET_R`，如果value是引用则是`ZEND_FE_RESET_RW`，执行时如果发现数组或对象属性为空则直接跳出遍历，所以这条opcode还需要知道跳出的位置，这个位置需要编译完foreach以后才能确定；
+* __(2)__ 编译fetch数组/对象当前单元key、value的opcode：`ZEND_FE_FETCH_R`，如果是引用则是`ZEND_FE_FETCH_RW`，此opcode还需要知道当遍历已经到达数组末尾时跳出遍历的位置，与步骤(1)的opcode相同,另外还有一个关键操作，前面已经说过遍历的key、value实际就是普通的局部变量，它们的内存存储位置正是在这一步分配确定的，分配过程与普通局部变量的过程完全相同，如果value不是一个CV变量(比如：foreach($arr as $v["xx"]){...})则还会编译其它操作的opcode；
+* __(3)__ 如果foreach定义了key则编译一条赋值opcode，此操作是对key进行赋值；
+* __(4)__ 编译循环体statement；
+* __(5)__ 编译跳回遍历开始位置的opcode：`ZEND_JMP`，一次遍历结束时会跳回步骤(2)编译的opcode处进行下次遍历；
+* __(6)__ 设置步骤(1)、(2)两条opcode跳过的opcode数；
+* __(7)__ 编译`ZEND_FE_FREE`，此操作用于释放步骤(1)"拷贝"的数组。
 
 最终编译后的结构：
 
 ![](../img/foreach_run.png)
 
 运行时的步骤：
-* (1) 执行`ZEND_FE_RESET_R`，过程上面已经介绍了；
-* (2) 执行`ZEND_FE_FETCH_R`，此opcode的操作主要有三个：检查遍历位置是否到达末尾、将数组元素的value赋值给$value、将数组元素的key赋值给一个临时变量(注意与value不同)；
-* (3) 如果定义了key则执行`ZEND_ASSIGN`，将key的值从临时变量赋值给$key，否则跳到步骤(4)；
-* (4) 执行循环体的statement；
-* (5) 执行`ZEND_JMPNZ`跳回步骤(2)；
-* (6) 遍历结束后执行`ZEND_FE_FREE`释放数组。
+* __(1)__ 执行`ZEND_FE_RESET_R`，过程上面已经介绍了；
+* __(2)__ 执行`ZEND_FE_FETCH_R`，此opcode的操作主要有三个：检查遍历位置是否到达末尾、将数组元素的value赋值给$value、将数组元素的key赋值给一个临时变量(注意与value不同)；
+* __(3)__ 如果定义了key则执行`ZEND_ASSIGN`，将key的值从临时变量赋值给$key，否则跳到步骤(4)；
+* __(4)__ 执行循环体的statement；
+* __(5)__ 执行`ZEND_JMPNZ`跳回步骤(2)；
+* __(6)__ 遍历结束后执行`ZEND_FE_FREE`释放数组。
 
 
