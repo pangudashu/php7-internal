@@ -53,35 +53,81 @@ void zend_compile_break_continue(zend_ast *ast)
 
     if (depth_ast) {
         zval *depth_zv;
-        if (depth_ast->kind != ZEND_AST_ZVAL) {
-            zend_error_noreturn(E_COMPILE_ERROR, "'%s' operator with non-constant operand "
-                "is no longer supported", ast->kind == ZEND_AST_BREAK ? "break" : "continue");
-        }
-
-        depth_zv = zend_ast_get_zval(depth_ast);
-        if (Z_TYPE_P(depth_zv) != IS_LONG || Z_LVAL_P(depth_zv) < 1) {
-            zend_error_noreturn(E_COMPILE_ERROR, "'%s' operator accepts only positive numbers",
-                ast->kind == ZEND_AST_BREAK ? "break" : "continue");
-        }
-
+        ...
         depth = Z_LVAL_P(depth_zv);
     } else {
         depth = 1;
     }
+    ...
+    
+    //生成opcode
+    opline = zend_emit_op(NULL, ast->kind == ZEND_AST_BREAK ? ZEND_BRK : ZEND_CONT, NULL, NULL);
+    opline->op1.num = CG(context).current_brk_cont; //break、continue所在循环层
+    opline->op2.num = depth;  //要跳出的层数
+}
+```
+`zend_compile_break_continue()`到这一步完成整个break、continue的编译还没有完成，因为`CG(active_op_array)->brk_cont_array`这个数组只是编译期间使用的一个临时结构，break、continue编译生成的opcode：ZEND_BRK、ZEND_CONT并不是运行时直接执行的，这条opcode在整个脚本编译完成后、执行前被优化为 __ZEND_JMP__ ，这个操作在`pass_two()`中完成，关于这个过程在《3.1.2.2 AST->zend_op_array》一节曾经介绍过。
 
-    if (CG(context).current_brk_cont == -1) {
-        zend_error_noreturn(E_COMPILE_ERROR, "'%s' not in the 'loop' or 'switch' context",
-            ast->kind == ZEND_AST_BREAK ? "break" : "continue");
-    } else {
-        if (!zend_handle_loops_and_finally_ex(depth)) {
-            zend_error_noreturn(E_COMPILE_ERROR, "Cannot '%s' %d level%s",
-                ast->kind == ZEND_AST_BREAK ? "break" : "continue",
-                depth, depth == 1 ? "" : "s");
+```c
+ZEND_API zend_op_array *compile_file(zend_file_handle *file_handle, int type)
+{
+    //语法解析
+    zendparse();
+
+    //AST->opcodes
+    zend_compile_top_stmt(CG(ast));
+
+    pass_two(op_array);
+    ...
+}
+```
+```c
+ZEND_API int pass_two(zend_op_array *op_array)
+{
+    ...
+
+    opline = op_array->opcodes;
+    end = opline + op_array->last;
+    while (opline < end) {
+        switch (opline->opcode) {
+            ...
+            case ZEND_BRK:
+            case ZEND_CONT:
+            {
+                //计算跳转位置
+                uint32_t jmp_target = zend_get_brk_cont_target(op_array, opline);
+                ...
+                //将opcode修改为ZEND_JMP
+                opline->opcode = ZEND_JMP;
+                opline->op1.opline_num = jmp_target;
+                opline->op2.num = 0;
+
+                //将绝对跳转opcode位置修改为相对当前opcode的位置
+                ZEND_PASS_TWO_UPDATE_JMP_TARGET(op_array, opline, opline->op1);
+            }
+            break;
+            ...
         }
     }
-    opline = zend_emit_op(NULL, ast->kind == ZEND_AST_BREAK ? ZEND_BRK : ZEND_CONT, NULL, NULL);
-    opline->op1.num = CG(context).current_brk_cont; //所在循环层
-    opline->op2.num = depth;  //要跳出的层数
+
+    op_array->fn_flags |= ZEND_ACC_DONE_PASS_TWO;
+    return 0;
+}
+```
+从上面的过程可以看出，如果opcode为：ZEND_BRK或ZEND_CONT则统一设置opcode为`ZEND_JMP`，新opcode的op1记录的是break、continue跳到opcode的位置，这个值根据编译期间的`zend_brk_cont_element`计算得到，首先从op1、op2取出break、continue所在循环的zend_brk_cont_element结构以及要跳过的层级，然后根据`zend_brk_cont_element.parent`及层级数找到具体要跳出层的`zend_brk_cont_element`结构，从这个结构中获得那层循环判断条件及循环结束的opcode的位置。
+```c
+static uint32_t zend_get_brk_cont_target(const zend_op_array *op_array, const zend_op *opline) {
+    int nest_levels = opline->op2.num; //跳出的层级：break n;
+    int array_offset = opline->op1.num;//break、continue所属循环zend_brk_cont_element的存储下标
+    zend_brk_cont_element *jmp_to;
+    do {
+        jmp_to = &op_array->brk_cont_array[array_offset];
+        if (nest_levels > 1) {
+            array_offset = jmp_to->parent;
+        }
+    } while (--nest_levels > 0);
+
+    return opline->opcode == ZEND_BRK ? jmp_to->brk : jmp_to->cont;
 }
 ```
 
