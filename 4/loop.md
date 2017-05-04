@@ -192,6 +192,44 @@ void zend_compile_for(zend_ast *ast)
 运行时首先执行初始化表达式：init expression，然后执行`ZEND_JMP`跳到循环条件expression处，如果条件成立则执行`ZEND_JMPNZ`跳到循环体起始位置依次执行循环体、loop expression，如果条件不成立则终止循环，第一次循环之后就是：`循环条件->ZEND_JMPNZ->循环体->loop expression`之间循环了。
 
 ### 4.3.4 foreach循环
+foreach是PHP针对数组、对象提供的一种遍历方式，foreach语法：
+```php
+foreach (array_expression as $key => $value){
+    statement
+}
+```
+遍历arraiy_expression时每次循环会把当前单元的值赋给$value，当前单元的键值赋给$key，其中$key可以省略，$value前也可以加"&"表示引用单元的值。
 
+foreach的语法规则：
+```c
+statement:
+    ...
+    //省略key的规则: foreach($array as $v){ ... }
+    |   T_FOREACH '(' expr T_AS foreach_variable ')' foreach_statement
+            { $$ = zend_ast_create(ZEND_AST_FOREACH, $3, $5, NULL, $7); }
+    //有key的规则: foreach($array as $k=>$v){ ... }
+    |   T_FOREACH '(' expr T_AS foreach_variable T_DOUBLE_ARROW foreach_variable ')' foreach_statement
+            { $$ = zend_ast_create(ZEND_AST_FOREACH, $3, $7, $5, $9); }
+    ...
+;
+```
+foreach在编译阶段解析为`ZEND_AST_FOREACH`节点，包含4个子节点，分别表示：遍历的数组或对象、遍历的value、遍历的key以及循环体，生成的AST类似这样：
 
+![](../img/ast_foreach.png)
+
+如果value是指向数组或对象成员的引用，则value对应的节点类型为`ZEND_AST_REF`。
+
+相对上面几种常规的循环结构，foreach的实现略显复杂：$key、$value实际就是两个普通的局部变量，遍历的过程就是对两个局部变量不断赋值、更新的过程，以数组为例，首先将数组拷贝一份用于遍历(只拷贝zval，value还是指向同一份)，从arData第一个元素开始，把Bucket.zval.value值赋值给$value，把Bucket.key(或Bucket.h)赋值给$key，然后更新迭代位置：将下一个元素的位置记录在`zval.u2.fe_iter_idx`中，这样下一轮遍历时直接从这个位置开始，这也是遍历前为什么要拷贝一份zval用于遍历的原因，如果发现`zval.u2.fe_iter_idx`已经到达arData末尾了则结束遍历，销毁一开始拷贝的zval。举个例子来看：
+
+```php
+$arr = array(1,2,3);
+foreach($arr as $k=>$v){
+    echo $v;
+}
+```
+局部变量对应的内存结构：
+
+![](../img/foreach_struct.png)
+
+如果value是引用则在循环前首先将原数组或对象重置为引用类型，然后新分配一个zval指向这个引用，后面的过程就与上面的一致了。
 
