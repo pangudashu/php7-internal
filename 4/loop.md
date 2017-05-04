@@ -249,6 +249,12 @@ foreach($arr as $k=>$v){
 
 ![](../img/foreach_run.png)
 
-
+运行时的步骤：
+* (1) 执行`ZEND_FE_RESET_R`，过程上面已经介绍了；
+* (2) 执行`ZEND_FE_FETCH_R`，此opcode的操作主要有三个：检查遍历位置是否到达末尾、将数组元素的value赋值给$value、将数组元素的key赋值给一个临时变量(注意与value不同)；
+* (3) 如果定义了key则执行`ZEND_ASSIGN`，将key的值从临时变量赋值给$key，否则跳到步骤(4)；
+* (4) 执行循环体的statement；
+* (5) 执行`ZEND_JMPNZ`跳回步骤(2)；
+* (6) 遍历结束后执行`ZEND_FE_FREE`释放数组。
 
 
