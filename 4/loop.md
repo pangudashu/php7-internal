@@ -45,6 +45,8 @@ void zend_compile_while(zend_ast *ast)
     
     //(1)编译ZEND_JMP
     opnum_jmp = zend_emit_jump(0);
+
+    zend_begin_loop(ZEND_NOP, NULL);
     
     //(2)编译循环体statement，opnum_start为循环体起始位置
     opnum_start = get_next_op_number(CG(active_op_array));
@@ -59,6 +61,8 @@ void zend_compile_while(zend_ast *ast)
     
     //(4)编译ZEND_JMPNZ，用于循环条件成立时跳回循环体开始位置：opnum_start
     zend_emit_cond_jump(ZEND_JMPNZ, &cond_node, opnum_start);
+
+    zend_end_loop(opnum_cond);
 }
 ```
 编译后opcode整体如下：
