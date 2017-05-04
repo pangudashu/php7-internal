@@ -35,10 +35,12 @@
       * [3.4.7 类的自动加载](3/zend_autoload.md)
    * [3.5 运行时缓存](3/zend_runtime_cache.md)
 * 第4章 PHP基础语法实现
-   * 4.1 运算符
+   * 4.1 表达式运算
    * [4.2 选择结构](4/if.md)
    * [4.3 循环结构](4/loop.md)
-   * 4.4 跳转语句
+   * 4.4 中断及跳转
+   * 4.5 include/require
+   * 4.6 try-catch
 * 第5章 内存管理
    * [5.1 Zend内存池](5/zend_alloc.md)
    * 5.2 引用计数
