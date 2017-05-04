@@ -75,9 +75,9 @@ found:
 
 ![](../img/zend_dy_prop.png)
 
-> 这里不清楚将原有属性也插入properties的用意，已知用到的一个地方是在GC垃圾回收获取对象所有属性时(zend_std_get_gc())，如果有动态属性则直接返回properties给GC遍历，假如不把普通的显式定义的属性"拷贝"进来则需要返回、遍历两个数组。
+> __Note:__ 这里不清楚将原有属性也插入properties的用意，已知用到的一个地方是在GC垃圾回收获取对象所有属性时(zend_std_get_gc())，如果有动态属性则直接返回properties给GC遍历，假如不把普通的显式定义的属性"拷贝"进来则需要返回、遍历两个数组。
 >
-> 另外一个地方需要注意，把原属性"转移"到properties并不仅仅是创建动态属性时触发的，调用对象的get_properties(即：zend_std_get_properties())也会这么处理，比如将一个object转为array时就会触发这个动作: $arr = (array)$object;
+> 另外一个地方需要注意，把原属性"转移"到properties并不仅仅是创建动态属性时触发的，调用对象的get_properties(即：zend_std_get_properties())也会这么处理，比如将一个object转为array时就会触发这个动作: $arr = (array)$object，通过foreach遍历一个对象时也会调用get_properties获取属性数组进行遍历。
 
 成员属性的读取通过`zend_object->handlers->read_property`(默认zend_std_read_property())函数完成，动态属性的查找过程实际与`write_property`中相同：
 ```c
