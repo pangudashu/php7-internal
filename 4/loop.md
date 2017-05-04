@@ -231,5 +231,9 @@ foreach($arr as $k=>$v){
 
 ![](../img/foreach_struct.png)
 
-如果value是引用则在循环前首先将原数组或对象重置为引用类型，然后新分配一个zval指向这个引用，后面的过程就与上面的一致了。
+如果value是引用则在循环前首先将原数组或对象重置为引用类型，然后新分配一个zval指向这个引用，后面的过程就与上面的一致了，仍以上面的例子为例，如果是:`foreach($arr as $k=>&$v){ ... }`则：
+
+![](../img/foreach_ref_struct.png)
+
+
 
