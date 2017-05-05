@@ -209,6 +209,9 @@ static zend_always_inline void i_init_execute_data(zend_execute_data *execute_da
     }
 }
 ```
+`zend_attach_symbol_table()`的作用是把当前作用域下的变量添加到EG(symbol_table)哈希表中，也就是全局变量，函数中通过global关键词获取的全局变量正是在此时添加的，EG(symbol_table)中的值间接的指向`zend_execute_data`中的局部变量，两者的结构如下图所示：
+
+![](../img/symbol_cv.png)
 
 #### (3)执行opcode
 这一步开始具体执行opcode指令，这里调用的是`zend_execute_ex`，这是一个函数指针，如果此指针没有被任何扩展重新定义那么将由默认的`execute_ex`处理：
