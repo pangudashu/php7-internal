@@ -136,8 +136,79 @@ static uint32_t zend_get_brk_cont_target(const zend_op_array *op_array, const ze
 
 执行时直接跳到对应的opcode位置即可。
 
+````
+在多层循环中break、continue直接根据层级数字跳转很不方便，这点PHP可以借鉴Golang的语法:break/continue + LABEL，支持按标签break、continue，根据上一节及本节介绍的内容这一个实现起来并不复杂，有兴趣的可以思考下如何实现。
+````
+
 ### 4.4.2 goto
-goto 操作符可以用来跳转到程序中的另一位置。该目标位置可以用目标名称加上冒号来标记，而跳转指令是 goto 之后接上目标位置的标记。PHP 中的 goto 有一定限制，目标位置只能位于同一个文件和作用域，也就是说无法跳出一个函数或类方法，也无法跳入到另一个函数，可以跳出循环但无法跳入循环，多层循环中通常会用goto代替多层break。
+goto 操作符可以用来跳转到程序中的另一位置。该目标位置可以用目标名称加上冒号来标记，而跳转指令是 goto 之后接上目标位置的标记。PHP 中的 goto 有一定限制，目标位置只能位于同一个文件和作用域，也就是说无法跳出一个函数或类方法，也无法跳入到另一个函数，可以跳出循环但无法跳入循环(可以在同一层循环中跳转)，多层循环中通常会用goto代替多层break。
+
+goto语法：
+```php
+goto LABEL;
+
+LABEL:
+    statement;
+```
+goto与label需要组合使用，其实现与break、continue类似，最终也是被优化为`ZEND_JMP`，首先看下定义一个label时都有哪些操作：
+```c
+statement:
+    ...
+
+    |   T_STRING ':' { $$ = zend_ast_create(ZEND_AST_LABEL, $1); }
+;
+```
+label的编译过程非常简单，与循环结构的编译类似，编译时会把label插入`CG(context).labels`哈希表中，key就是label名称，value是一个`zend_label`结构：
+```c
+typedef struct _zend_label {
+    int brk_cont; //当前label所在循环
+    uint32_t opline_num; //下一条opcode位置
+} zend_label;
+```
+brk_cont用于记录当前label所在的循环，这个值就是上面介绍的每个循环在`zend_op_array->brk_cont_array`数组中的位置；opline_num比较容易理解，就是label下面第一条opcode的位置。到这里你应该能猜得到goto的工作过程了，首先根据label名称在`CG(context).labels`查找到跳转label的`zend_label`结构，然后jmp到`zend_label.opline_num`的位置，brk_cont的作用是用来判断是不是goto到了另一层循环中去。label具体的编译过程：
+```c
+void zend_compile_label(zend_ast *ast)
+{           
+    zend_string *label = zend_ast_get_str(ast->child[0]);
+    zend_label dest;
+
+    //编译时会将label插入CG(context).labels哈希表
+    if (!CG(context).labels) {
+        ALLOC_HASHTABLE(CG(context).labels);
+        zend_hash_init(CG(context).labels, 8, NULL, label_ptr_dtor, 0);
+    }       
+
+    //设置label信息：当前所在循环、下一条opcode编号
+    dest.brk_cont = CG(context).current_brk_cont;
+    dest.opline_num = get_next_op_number(CG(active_op_array));
+
+    if (!zend_hash_add_mem(CG(context).labels, label, &dest, sizeof(zend_label))) {
+        zend_error_noreturn(E_COMPILE_ERROR, "Label '%s' already defined", ZSTR_VAL(label));
+    }   
+} 
+```
+goto的编译过程：
+```c
+void zend_compile_goto(zend_ast *ast)
+{
+    zend_ast *label_ast = ast->child[0];
+    znode label_node;
+    zend_op *opline;
+    uint32_t opnum_start = get_next_op_number(CG(active_op_array));
+
+    zend_compile_expr(&label_node, label_ast);
+
+    //如果当前在一个循环内则有的情况下是不能简单跳出循环的
+    zend_handle_loops_and_finally();
+    //编译一条临时opcode：ZEND_GOTO
+    opline = zend_emit_op(NULL, ZEND_GOTO, NULL, &label_node);
+    opline->op1.num = get_next_op_number(CG(active_op_array)) - opnum_start - 1;
+    opline->extended_value = CG(context).current_brk_cont;
+} 
+```
+goto初步被编译为`ZEND_GOTO`，其中label名称保存在op2，extended_value记录的是goto所在循环，如果没有在循环中这个值就等于-1，op1比较特殊，从上面编译的过程分析，它的值等于goto之间的opcode数，goto只编译了一条`ZEND_GOTO`哪来的其他opcode呢？这种情况就是goto在一个循环中，上一节介绍的循环结构中有一个比较特殊：foreach，它在遍历前会新生成一个zval用于遍历，这个zval是在循环结束时才被释放，假如foreach循环体中执行了goto，直接像普通跳转一样跳到了别的位置，那么这个zval就无法释放了，所以这种情况下在goto跳转前需要先执行这些收尾的opcode，这些opcode就是上面`zend_handle_loops_and_finally()`编译的，具体的细节这里不再展开，有兴趣的可以仔细研究下foreach编译时`zend_begin_loop()`的特殊处理。
+
+后面的处理就与break、continue一样了，在`pass_two()`中`ZEND_GOTO`被重置为`ZEND_JMP`，具体的处理过程在`zend_resolve_goto_label()`，比较简单，不再赘述。
 
 
 
