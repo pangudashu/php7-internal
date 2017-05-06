@@ -163,4 +163,6 @@ ZEND_API void zend_detach_symbol_table(zend_execute_data *execute_data)
 
 ![](../img/include_5.png)
 
+这就是include的实现原理，整个过程并不复杂，比较难理解的一点在于两个文件之间变量的继承、覆盖，可以仔细研究下上面不同阶段时的内存关系图。
 
+最后简单介绍下include_once、require_once，这两个与include、require的区别是在一次请求中同一文件只会被加载一次，第一次执行时会把这个文件保存在EG(included_files)哈希表中，再次加载时检查这个哈希表，如果发现已经加载过则直接跳过。
