@@ -96,9 +96,41 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INCLUDE_OR_EVAL_SPEC_CONST_HAN
 
 > 注意：这里include文件中定义的var_1实际是替换了原文件中的变量，也就是只有一个var_1，所以此处zend_array的引用是1而不是2
 
+接下来就是被包含文件的执行，执行到`$var_2 = array()`时，将原array(1,2,3)引用减1变为0，这时候将其释放，然后将新的value：array()赋给$var_2，这个过程就是普通变量的赋值过程，注意此时调用文件中的$var_2仍然指向被释放掉的value，此时的内存关系：
 
+![](../img/include_3.png)
 
-体实现：
+看到这里你可能会有一个疑问：$var_2既然被重新修改为新的一个值了，那么为什么调用文件中的$var_2仍然指向释放掉的value呢？include执行完成回到原来的调用文件中后为何可以读取到新的$var_2值以及新定义的var_3呢？答案在被包含文件执行完毕return的过程中。
+
+被包含文件执行完以后最后执行return返回调用文件include的位置，return时会把***被包含文件中的***全局变量从zend_execute_data中移到EG(symbol_table)中，这里的移动是把value值更新到EG(symbol_table)，而不是像原来那样间接的指向value，这个过程由`zend_detach_symbol_table()`完成：
+```c
+ZEND_API void zend_detach_symbol_table(zend_execute_data *execute_data)
+{   
+    zend_op_array *op_array = &execute_data->func->op_array;
+    HashTable *ht = execute_data->symbol_table;
+    
+    /* copy real values from CV slots into symbol table */
+    if (EXPECTED(op_array->last_var)) {
+        zend_string **str = op_array->vars;
+        zend_string **end = str + op_array->last_var;
+        zval *var = EX_VAR_NUM(0);
+        
+        do {
+            if (Z_TYPE_P(var) == IS_UNDEF) {
+                zend_hash_del(ht, *str);
+            } else {
+                zend_hash_update(ht, *str, var);
+                ZVAL_UNDEF(var);
+            }
+            str++;
+            var++;
+        } while (str != end);
+    }
+}
+```
+完成以后EG(symbol_table)：
+
+![](../img/include_4.png)
 
 include文件在attach_symbol_table()时如果发现要插入的全局变量已经存在，则会将新的全局变量的value指向原value，然后将全局变量更新为新的全局变量。
 
