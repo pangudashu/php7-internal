@@ -161,4 +161,6 @@ ZEND_API void zend_detach_symbol_table(zend_execute_data *execute_data)
 
 接着是还原调用文件的zend_execute_data，切回调用文件的include位置，在将执行器切回之前再次执行了`zend_attach_symbol_table()`，这时就会将原调用文件的变量重新插入全局变量符号表，插入$var_2、$var_3时发现已经存在了，则将局部变量区的$var_2、$var_3的value修改为这个值，这就是$var_2被include文件更新后覆盖原value的过程，同时$var_3也因为在调用文件中出现了所以值被修改为include中设定的值，此时的内存关系：
 
+![](../img/include_5.png)
+
 
