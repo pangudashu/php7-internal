@@ -4,7 +4,6 @@
 
 代码版本：php-7.0.12
 ````
-
 ## 目录：
 * 第1章 PHP基本架构
    * 1.1 PHP简介
@@ -42,8 +41,8 @@
    * [4.2 选择结构](4/if.md)
    * [4.3 循环结构](4/loop.md)
    * [4.4 中断及跳转](4/break.md)
-   * 4.5 include/require
-   * 4.6 try-catch
+   * [4.5 include/require](4/include.md)
+   * 4.6 异常捕获
 * 第5章 内存管理
    * [5.1 Zend内存池](5/zend_alloc.md)
    * 5.2 引用计数
