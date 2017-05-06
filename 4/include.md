@@ -102,7 +102,34 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INCLUDE_OR_EVAL_SPEC_CONST_HAN
 
 看到这里你可能会有一个疑问：$var_2既然被重新修改为新的一个值了，那么为什么调用文件中的$var_2仍然指向释放掉的value呢？include执行完成回到原来的调用文件中后为何可以读取到新的$var_2值以及新定义的var_3呢？答案在被包含文件执行完毕return的过程中。
 
-被包含文件执行完以后最后执行return返回调用文件include的位置，return时会把***被包含文件中的***全局变量从zend_execute_data中移到EG(symbol_table)中，这里的移动是把value值更新到EG(symbol_table)，而不是像原来那样间接的指向value，这个过程由`zend_detach_symbol_table()`完成：
+被包含文件执行完以后最后执行return返回调用文件include的位置，return时会把***被包含文件中的***全局变量从zend_execute_data中移到EG(symbol_table)中，这里的移动是把value值更新到EG(symbol_table)，而不是像原来那样间接的指向value，这个操作在`zend_detach_symbol_table()`中完成，具体的return处理：
+```c
+static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL zend_leave_helper_SPEC(ZEND_OPCODE_HANDLER_ARGS)
+{
+    ...
+    if (EXPECTED((ZEND_CALL_KIND_EX(call_info) & ZEND_CALL_TOP) == 0)) {
+        //将include文件中定义的变量移到EG(symbol_table)
+        zend_detach_symbol_table(execute_data);
+        //释放zend_op_array
+        destroy_op_array(&EX(func)->op_array);
+        
+        old_execute_data = execute_data;
+        //切回调用文件的zend_execute_data
+        execute_data = EG(current_execute_data) = EX(prev_execute_data);
+        //释放include文件的zend_execute_data
+        zend_vm_stack_free_call_frame_ex(call_info, old_execute_data);
+
+        //重新attach
+        zend_attach_symbol_table(execute_data);
+
+        LOAD_NEXT_OPLINE();
+        ZEND_VM_LEAVE();
+    }else{
+        //函数、主脚本返回的情况
+    }
+}
+```
+`zend_detach_symbol_table()`操作：
 ```c
 ZEND_API void zend_detach_symbol_table(zend_execute_data *execute_data)
 {   
@@ -132,6 +159,6 @@ ZEND_API void zend_detach_symbol_table(zend_execute_data *execute_data)
 
 ![](../img/include_4.png)
 
-include文件在attach_symbol_table()时如果发现要插入的全局变量已经存在，则会将新的全局变量的value指向原value，然后将全局变量更新为新的全局变量。
+接着是还原调用文件的zend_execute_data，切回调用文件的include位置，在将执行器切回之前再次执行了`zend_attach_symbol_table()`，这时就会将原调用文件的变量重新插入全局变量符号表，插入$var_2、$var_3时发现已经存在了，则将局部变量区的$var_2、$var_3的value修改为这个值，这就是$var_2被include文件更新后覆盖原value的过程，同时$var_3也因为在调用文件中出现了所以值被修改为include中设定的值，此时的内存关系：
 
-include执行完成return时zend_detach_symbol_table()时会将所有的全局变量的value拷到EG(symbol_table)中(CV->symbol table)，原调用文件重新attach，这样会把include文件中的全局变量移到当前文件，如果include中修改了原文件的全局变量，此时也会将更新后的value重新赋给原文件的变量(symbol table -> CV)。
+
