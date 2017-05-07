@@ -42,7 +42,7 @@
    * [4.3 循环结构](4/loop.md)
    * [4.4 中断及跳转](4/break.md)
    * [4.5 include/require](4/include.md)
-   * 4.6 异常捕获
+   * [4.6 异常处理](4/exception.md)
 * 第5章 内存管理
    * [5.1 Zend内存池](5/zend_alloc.md)
    * 5.2 引用计数
