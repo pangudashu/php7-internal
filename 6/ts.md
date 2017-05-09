@@ -291,9 +291,16 @@ static HashTable *global_class_table = NULL;
 static HashTable *global_constants_table = NULL;
 static HashTable *global_auto_globals_table = NULL;
 static HashTable *global_persistent_list = NULL;
-ZEND_TSRMLS_CACHE_DEFINE() //展开后： __thread void *_tsrm_ls_cache = NULL;
-//_tsrm_ls_cache就是各线程storage的地址
+ZEND_TSRMLS_CACHE_DEFINE() //=>TSRM_TLS void *TSRMLS_CACHE = NULL; 展开后： __thread void *_tsrm_ls_cache = NULL; _tsrm_ls_cache就是各线程storage的地址
 #endif
 ```
+比如EG：
+```c
+# define EG(v) ZEND_TSRMG(executor_globals_id, zend_executor_globals *, v)
 
+#define ZEND_TSRMG TSRMG_STATIC
+#define TSRMG_STATIC(id, type, element) (TSRMG_BULK_STATIC(id, type)->element)
+#define TSRMG_BULK_STATIC(id, type) ((type) (*((void ***) TSRMLS_CACHE))[TSRM_UNSHUFFLE_RSRC_ID(id)])
+```
+EG(xxx)最终展开：((zend_executor_globals *) (*((void ***) _tsrm_ls_cache))[executor_globals_id-1]->xxx)。
 
