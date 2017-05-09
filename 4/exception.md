@@ -71,14 +71,34 @@ throw exception_object;
 throw的编译比较简单，最终只编译为一条opcode：`ZEND_THROW`。
 
 ### 4.6.2 异常的抛出与捕获
-上一小节我们介绍了exception结构在编译阶段的处理，接下来我们再介绍下运行时exception的处理过程，这个过程相对比较复杂，简单的概括，整体的处理流程如下：
+上一小节我们介绍了exception结构在编译阶段的处理，接下来我们再介绍下运行时exception的处理过程，这个过程相对比较复杂，整体的讲其处理流程整体如下：
 
-* (1) 检查抛出的是否是object，否则将导致error错误；
-* (2) 将EG(exception)设置为抛出的异常对象，同时将当前stack(即:zend_execute_data)接下来要执行的opcode设置为`ZEND_HANDLE_EXCEPTION`；
-* (3) 执行`ZEND_HANDLE_EXCEPTION`，查找匹配的catch：
-  ** (3.1) 首先遍历当前zend_op_array下定义的所有异常捕获，即`zend_op_array->try_catch_array`数组，然后根据throw的位置、try开始的位置、catch开始的位置、finally开始的位置判断判断异常是否在try范围内，如果同时命中了多个try(即嵌套try的情况)则选择最后那个(也就是最里层的)，遍历完以后如果命中了则进入步骤(3.2)处理，如果没有命中当前stack下任何try则进入步骤(4)；
-  ** (3.2) 到这一步表示抛出的异常在当前zend_op_array下有try拦截(注意这里只是表示异常在try中抛出的，但是抛出的异常并一定能被catch)，然后根据当前try块的`zend_try_catch_element`结构取出第一个catch的位置，将opcode设置为zend_try_catch_element.catch_op，跳到第一个catch块开始的位置执行，即:执行`ZEND_CATCH`；
-  ** (3.3) 执行`ZEND_CATCH`，检查抛出的异常对象是否与当前catch的类型匹配，检查的过程为判断两个类是否存在父子关系，如果匹配则表示异常被成功捕获，将EG(exception)清空，如果没有则跳到下一个catch的位置重复步骤(3.3)，如果到最后一个catch仍然没有命中则在这个catch的位置抛出一个异常(实际还是原来按个异常，只是将抛出的位置转移了当前catch的位置)，然后回到步骤(3);
-* (4) 当前zend_op_array没能成功捕获异常，需要继续往上抛：回到调用位置，将接下来要执行的opcode设置为`ZEND_HANDLE_EXCEPTION`，比如函数中抛出了一个异常没有在函数中捕获，则跳到调用的位置继续捕获，回到步骤(3)；如果到最终主脚本也没有被捕获则将结束执行并导致error错误。
+* __(1)__ 检查抛出的是否是object，否则将导致error错误；
+* __(2)__ 将EG(exception)设置为抛出的异常对象，同时将当前stack(即:zend_execute_data)接下来要执行的opcode设置为`ZEND_HANDLE_EXCEPTION`；
+* __(3)__ 执行`ZEND_HANDLE_EXCEPTION`，查找匹配的catch：
+  * __(3.1)__ 首先遍历当前zend_op_array下定义的所有异常捕获，即`zend_op_array->try_catch_array`数组，然后根据throw的位置、try开始的位置、catch开始的位置、finally开始的位置判断判断异常是否在try范围内，如果同时命中了多个try(即嵌套try的情况)则选择最后那个(也就是最里层的)，遍历完以后如果命中了则进入步骤(3.2)处理，如果没有命中当前stack下任何try则进入步骤(4)；
+  * __(3.2)__ 到这一步表示抛出的异常在当前zend_op_array下有try拦截(注意这里只是表示异常在try中抛出的，但是抛出的异常并一定能被catch)，然后根据当前try块的`zend_try_catch_element`结构取出第一个catch的位置，将opcode设置为zend_try_catch_element.catch_op，跳到第一个catch块开始的位置执行，即:执行`ZEND_CATCH`；
+  * __(3.3)__ 执行`ZEND_CATCH`，检查抛出的异常对象是否与当前catch的类型匹配，检查的过程为判断两个类是否存在父子关系，如果匹配则表示异常被成功捕获，将EG(exception)清空，如果没有则跳到下一个catch的位置重复步骤(3.3)，如果到最后一个catch仍然没有命中则在这个catch的位置抛出一个异常(实际还是原来按个异常，只是将抛出的位置转移了当前catch的位置)，然后回到步骤(3);
+* __(4)__ 当前zend_op_array没能成功捕获异常，需要继续往上抛：回到调用位置，将接下来要执行的opcode设置为`ZEND_HANDLE_EXCEPTION`，比如函数中抛出了一个异常没有在函数中捕获，则跳到调用的位置继续捕获，回到步骤(3)；如果到最终主脚本也没有被捕获则将结束执行并导致error错误。
 
+这个过程最复杂的地方在于异常匹配、传递的过程，主要为`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`两条opcode之间的调用，当抛出一个异常时会终止后面opcode的执行，转向执行`ZEND_HANDLE_EXCEPTION`，根据异常抛出的位置定位到最近的一个try的catch位置，如果这个catch没有匹配则跳到下一个catch块，然后再次执行`ZEND_HANDLE_EXCEPTION`，如果到最后一个catch仍没有匹配则将异常抛出前位置opline_before_exception更新为最后一个catch的位置，再次执行`ZEND_HANDLE_EXCEPTION`，由于异常抛出的位置已经更新了所以不会再匹配上次检查过的那个catch，这个过程实际就是不断递归执行`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`；如果当前zend_op_array都无法捕获则将异常抛向上一个调用栈继续捕获，下面根据一个例子具体说明下：
+```php
+function my_func(){
+    //...
+    throw new Exception("This is a exception from my_func()");
+}
+
+try{
+    my_func();
+}catch(ErrorException $e){
+    echo "ErrorException";
+}catch(Exception $e){
+    echo "Exception";
+}
+```
+my_func()中抛出了一个异常，首先在my_func()中抛出一个异常，然后在my_func()的zend_op_array中检查是不是能够捕获，发现没有，则回到调用的位置，再次检查，第1次匹配到`catch(ErrorException $e)`，检查后发现并不匹配，然后跳到下一个catch块继续匹配，第2次匹配到`catch(Exception $e)`，检查后发现命中，捕获成功。
+
+![](../img/exception_run_2.png)
+
+具体的实现过程还有很多额外的处理，这里不再展开，感兴趣的可以详细研究下`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`两条opcode以及zend_exception.c中具体逻辑。
 
