@@ -81,7 +81,7 @@ throw的编译比较简单，最终只编译为一条opcode：`ZEND_THROW`。
   * __(3.3)__ 执行`ZEND_CATCH`，检查抛出的异常对象是否与当前catch的类型匹配，检查的过程为判断两个类是否存在父子关系，如果匹配则表示异常被成功捕获，将EG(exception)清空，如果没有则跳到下一个catch的位置重复步骤(3.3)，如果到最后一个catch仍然没有命中则在这个catch的位置抛出一个异常(实际还是原来按个异常，只是将抛出的位置转移了当前catch的位置)，然后回到步骤(3);
 * __(4)__ 当前zend_op_array没能成功捕获异常，需要继续往上抛：回到调用位置，将接下来要执行的opcode设置为`ZEND_HANDLE_EXCEPTION`，比如函数中抛出了一个异常没有在函数中捕获，则跳到调用的位置继续捕获，回到步骤(3)；如果到最终主脚本也没有被捕获则将结束执行并导致error错误。
 
-![](../throw.png)
+![](../img/throw.png)
 
 这个过程最复杂的地方在于异常匹配、传递的过程，主要为`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`两条opcode之间的调用，当抛出一个异常时会终止后面opcode的执行，转向执行`ZEND_HANDLE_EXCEPTION`，根据异常抛出的位置定位到最近的一个try的catch位置，如果这个catch没有匹配则跳到下一个catch块，然后再次执行`ZEND_HANDLE_EXCEPTION`，如果到最后一个catch仍没有匹配则将异常抛出前位置EG(opline_before_exception)更新为最后一个catch的位置，再次执行`ZEND_HANDLE_EXCEPTION`，由于异常抛出的位置已经更新了所以不会再匹配上次检查过的那个catch，这个过程实际就是不断递归执行`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`；如果当前zend_op_array都无法捕获则将异常抛向上一个调用栈继续捕获，下面根据一个例子具体说明下：
 ```php
