@@ -64,13 +64,21 @@ typedef struct _zend_try_catch_element {
 
 ![](../img/exception_run.png)
 
-抛出异常的语法：
+异常的抛出通过throw一个异常对象来实现，这个对象必须继承>自Exception类，抛出异常的语法：
 ```php
 throw exception_object;
 ```
 throw的编译比较简单，最终只编译为一条opcode：`ZEND_THROW`。
 
 ### 4.6.2 异常的抛出与捕获
-上一小节我们介绍了exception结构在编译阶段的处理，接下来我们再介绍下运行时exception的处理过程，exception的处理过程相对比较复杂，为容易理解，下面将只对主要处理进行说明。
+上一小节我们介绍了exception结构在编译阶段的处理，接下来我们再介绍下运行时exception的处理过程，这个过程相对比较复杂，简单的概括，整体的处理流程如下：
+
+* (1) 检查抛出的是否是object，否则将导致error错误；
+* (2) 将EG(exception)设置为抛出的异常对象，同时将当前stack(即:zend_execute_data)接下来要执行的opcode设置为`ZEND_HANDLE_EXCEPTION`；
+* (3) 执行`ZEND_HANDLE_EXCEPTION`，查找匹配的catch：
+  ** (3.1) 首先遍历当前zend_op_array下定义的所有异常捕获，即`zend_op_array->try_catch_array`数组，然后根据throw的位置、try开始的位置、catch开始的位置、finally开始的位置判断判断异常是否在try范围内，如果同时命中了多个try(即嵌套try的情况)则选择最后那个(也就是最里层的)，遍历完以后如果命中了则进入步骤(3.2)处理，如果没有命中当前stack下任何try则进入步骤(4)；
+  ** (3.2) 到这一步表示抛出的异常在当前zend_op_array下有try拦截(注意这里只是表示异常在try中抛出的，但是抛出的异常并一定能被catch)，然后根据当前try块的`zend_try_catch_element`结构取出第一个catch的位置，将opcode设置为zend_try_catch_element.catch_op，跳到第一个catch块开始的位置执行，即:执行`ZEND_CATCH`；
+  ** (3.3) 执行`ZEND_CATCH`，检查抛出的异常对象是否与当前catch的类型匹配，检查的过程为判断两个类是否存在父子关系，如果匹配则表示异常被成功捕获，将EG(exception)清空，如果没有则跳到下一个catch的位置重复步骤(3.3)，如果到最后一个catch仍然没有命中则在这个catch的位置抛出一个异常(实际还是原来按个异常，只是将抛出的位置转移了当前catch的位置)，然后回到步骤(3);
+* (4) 当前zend_op_array没能成功捕获异常，需要继续往上抛：回到调用位置，将接下来要执行的opcode设置为`ZEND_HANDLE_EXCEPTION`，比如函数中抛出了一个异常没有在函数中捕获，则跳到调用的位置继续捕获，回到步骤(3)；如果到最终主脚本也没有被捕获则将结束执行并导致error错误。
 
 
