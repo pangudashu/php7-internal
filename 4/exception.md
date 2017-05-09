@@ -175,6 +175,60 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_HANDLE_EXCEPTION_SPEC_HANDLER(
 
 具体的实现过程还有很多额外的处理，这里不再展开，感兴趣的可以详细研究下`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`两条opcode以及zend_exception.c中具体逻辑。
 
-### 4.6.3 内核的异常捕获
+### 4.6.3 内核的异常处理
+前面介绍的异常处理是PHP语言层面的实现，在内核中也有一套供内核使用的异常处理模型，也就是C语言异常处理的实现，如：
+```c
+static int php_start_sapi(void)
+{
+    ...
 
+    zend_try {
+        ...
+    } zend_catch {
+        ...
+    } zend_end_try();
+    ...
+}
+```
+C语言并没有在语言层面提供try-catch机制，那么PHP中的是如何实现的呢？这个主要利用sigsetjmp()、siglongjmp()两个函数实现堆栈的保存、还原，在try的位置通过sigsetjmp()将当前位置的堆栈保存在一个变量中，异常抛出通过siglongjmp()跳回原位置，具体看下这几个宏的定义：
+```c
+#define zend_try                                                \
+    {                                                           \
+        JMP_BUF *__orig_bailout = EG(bailout);                  \
+        JMP_BUF __bailout;                                      \
+                                                                \
+        EG(bailout) = &__bailout;                               \
+        if (SETJMP(__bailout)==0) {
+#define zend_catch                                              \
+        } else {                                                \
+            EG(bailout) = __orig_bailout;
+#define zend_end_try()                                          \
+        }                                                       \
+        EG(bailout) = __orig_bailout;                           \
+    }
+
+
+# define JMP_BUF sigjmp_buf
+# define SETJMP(a) sigsetjmp(a, 0)
+# define LONGJMP(a,b) siglongjmp(a, b)
+# define JMP_BUF sigjmp_buf
+```
+展开后：
+```c
+{
+    //保存上一个zend_try记录的JMP_BUF，目的是实现多层嵌套try
+    JMP_BUF *__orig_bailout = EG(bailout);
+    JMP_BUF __bailout;
+    
+    //将当前堆栈保存在__bailout
+    EG(bailout) = &__bailout;
+    if (SETJMP(__bailout)==0) {
+        //try中的代码
+        //抛出异常调用：LONGJMP()
+    }else { //异常抛出后到这个分支
+        EG(bailout) = __orig_bailout;
+    }
+    EG(bailout) = __orig_bailout;
+}
+```
 
