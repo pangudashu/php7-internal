@@ -81,7 +81,9 @@ throw的编译比较简单，最终只编译为一条opcode：`ZEND_THROW`。
   * __(3.3)__ 执行`ZEND_CATCH`，检查抛出的异常对象是否与当前catch的类型匹配，检查的过程为判断两个类是否存在父子关系，如果匹配则表示异常被成功捕获，将EG(exception)清空，如果没有则跳到下一个catch的位置重复步骤(3.3)，如果到最后一个catch仍然没有命中则在这个catch的位置抛出一个异常(实际还是原来按个异常，只是将抛出的位置转移了当前catch的位置)，然后回到步骤(3);
 * __(4)__ 当前zend_op_array没能成功捕获异常，需要继续往上抛：回到调用位置，将接下来要执行的opcode设置为`ZEND_HANDLE_EXCEPTION`，比如函数中抛出了一个异常没有在函数中捕获，则跳到调用的位置继续捕获，回到步骤(3)；如果到最终主脚本也没有被捕获则将结束执行并导致error错误。
 
-这个过程最复杂的地方在于异常匹配、传递的过程，主要为`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`两条opcode之间的调用，当抛出一个异常时会终止后面opcode的执行，转向执行`ZEND_HANDLE_EXCEPTION`，根据异常抛出的位置定位到最近的一个try的catch位置，如果这个catch没有匹配则跳到下一个catch块，然后再次执行`ZEND_HANDLE_EXCEPTION`，如果到最后一个catch仍没有匹配则将异常抛出前位置opline_before_exception更新为最后一个catch的位置，再次执行`ZEND_HANDLE_EXCEPTION`，由于异常抛出的位置已经更新了所以不会再匹配上次检查过的那个catch，这个过程实际就是不断递归执行`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`；如果当前zend_op_array都无法捕获则将异常抛向上一个调用栈继续捕获，下面根据一个例子具体说明下：
+![](../throw.png)
+
+这个过程最复杂的地方在于异常匹配、传递的过程，主要为`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`两条opcode之间的调用，当抛出一个异常时会终止后面opcode的执行，转向执行`ZEND_HANDLE_EXCEPTION`，根据异常抛出的位置定位到最近的一个try的catch位置，如果这个catch没有匹配则跳到下一个catch块，然后再次执行`ZEND_HANDLE_EXCEPTION`，如果到最后一个catch仍没有匹配则将异常抛出前位置EG(opline_before_exception)更新为最后一个catch的位置，再次执行`ZEND_HANDLE_EXCEPTION`，由于异常抛出的位置已经更新了所以不会再匹配上次检查过的那个catch，这个过程实际就是不断递归执行`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`；如果当前zend_op_array都无法捕获则将异常抛向上一个调用栈继续捕获，下面根据一个例子具体说明下：
 ```php
 function my_func(){
     //...
@@ -100,5 +102,79 @@ my_func()中抛出了一个异常，首先在my_func()中抛出一个异常，�
 
 ![](../img/exception_run_2.png)
 
+上面的过程并没有提到finally的执行时机，首先要明确finally在哪些情况下会执行，命中catch的情况比较简单，即在catch statement执行完以后跳到finally执行，另外一种情况是如果一个异常在try中但没有命中任何catch那么其finally也是会被执行的，这种情况的finally实际是在步骤(3)中执行的，最后一个catch检查完以后会更新异常抛出位置：EG(opline_before_exception)，然后会再次执行`ZEND_HANDLE_EXCEPTION`，再次检查时就会发现没有命中任何catch但命中finally了(因为异常位置更新了)，这时候就会将异常对象保存在finally块中，然后执行finally，执行完再将异常对象还原继续捕获，下面看下步骤(3)的具体处理过程：
+
+```c
+static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_HANDLE_EXCEPTION_SPEC_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
+{
+    //op_num为异常抛出的位置，根据异常抛出前最后一条opcode与第一条opcode计算得出
+    uint32_t op_num = EG(opline_before_exception) - EX(func)->op_array.opcodes;
+
+    uint32_t catch_op_num = 0, finally_op_num = 0, finally_op_end = 0;
+
+    //查找异常是不是被try了：找最近的一层try
+    for (i = 0; i < EX(func)->op_array.last_try_catch; i++) {
+        if (EX(func)->op_array.try_catch_array[i].try_op > op_num) {
+            //try在抛出之后
+            break;
+        }
+        in_finally = 0;
+        //异常抛出位置在try后且比第一个catch位置小，表明这个try有可能捕获异常
+        if (op_num < EX(func)->op_array.try_catch_array[i].catch_op) {
+            //第一个catch的位置
+            catch_op_num = EX(func)->op_array.try_catch_array[i].catch_op;
+        }
+        //当前try有finally
+        if (op_num < EX(func)->op_array.try_catch_array[i].finally_op) {
+            finally_op_num = EX(func)->op_array.try_catch_array[i].finally_op;
+            finally_op_end = EX(func)->op_array.try_catch_array[i].finally_end;
+        }
+        if (op_num >= EX(func)->op_array.try_catch_array[i].finally_op &&
+                op_num < EX(func)->op_array.try_catch_array[i].finally_end) {
+            finally_op_end = EX(func)->op_array.try_catch_array[i].finally_end;
+            in_finally = 1;
+        }
+    }
+
+    cleanup_unfinished_calls(execute_data, op_num);
+
+    //异常命中了try但没有命中任何catch且那个try定义了finally：需要执行finally
+    //catch_op_num >= finally_op_num是嵌套try的情况，因为finally是检查完所有catch、更新异常抛出位置之后再执行的
+    //所以检查完内层try再检查外层循环时会出现这种情况
+    if (finally_op_num && (!catch_op_num || catch_op_num >= finally_op_num)) {
+        zval *fast_call = EX_VAR(EX(func)->op_array.opcodes[finally_op_end].op1.var);
+        
+        cleanup_live_vars(execute_data, op_num, finally_op_num);
+        if (in_finally && Z_OBJ_P(fast_call)) {
+            zend_exception_set_previous(EG(exception), Z_OBJ_P(fast_call));
+        }
+        //临时将EG(exception)转移到finally下，执行完finally再抛出
+        Z_OBJ_P(fast_call) = EG(exception);
+        EG(exception) = NULL;
+        fast_call->u2.lineno = (uint32_t)-1;
+        ZEND_VM_SET_OPCODE(&EX(func)->op_array.opcodes[finally_op_num]);
+        ZEND_VM_CONTINUE();
+    }else{
+        //这个是善后处理，因为异常抛出后后面的opcode将不再执行，但有些情况下还需要把一些资源释放掉
+        //比如前面我们介绍goto时提到的foreach中是不能直接跳出的，throw也是类似
+        cleanup_live_vars(execute_data, op_num, catch_op_num);
+        ...
+        if (catch_op_num) {
+            //匹配到catch(但不一定命中)，跳到catch处执行ZEND_CATCH进行判断
+            ZEND_VM_SET_OPCODE(&EX(func)->op_array.opcodes[catch_op_num]);
+            ZEND_VM_CONTINUE();
+        } else if (UNEXPECTED((EX(func)->op_array.fn_flags & ZEND_ACC_GENERATOR) != 0)) {
+            ...
+        } else {
+            //当前zend_op_array下已经没有匹配到的try了，如果异常仍没有被捕获则将在zend_leave_helper_SPEC()将异常抛给prev_execute_data继续捕获
+            ZEND_VM_TAIL_CALL(zend_leave_helper_SPEC(ZEND_OPCODE_HANDLER_ARGS_PASSTHRU));
+        }
+    }
+}
+```
+
 具体的实现过程还有很多额外的处理，这里不再展开，感兴趣的可以详细研究下`ZEND_HANDLE_EXCEPTION`、`ZEND_CATCH`两条opcode以及zend_exception.c中具体逻辑。
+
+### 4.6.3 内核的异常捕获
+
 
