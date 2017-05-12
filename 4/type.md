@@ -92,7 +92,7 @@ again:
 * 资源：转为分配给这个资源的唯一编号
 
 具体处理：
-    ```c
+```c
 ZEND_API zend_long ZEND_FASTCALL _zval_get_long_func(zval *op)
 {
 try_again: 
