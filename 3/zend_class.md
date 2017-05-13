@@ -193,7 +193,7 @@ typedef struct _zend_property_info {
     uint32_t offset; //普通成员变量的内存偏移值
                      //静态成员变量的数组索引
     uint32_t flags;  //属性掩码，如public、private、protected及是否为静态属性
-    zend_string *name; //属性名
+    zend_string *name; //属性名:并不是原始属性名
     zend_string *doc_comment;
     zend_class_entry *ce; //所属类
 } zend_property_info;
@@ -205,6 +205,7 @@ typedef struct _zend_property_info {
 
 #define ZEND_ACC_STATIC         0x01
 ```
+* __name__：属性名，特别注意的是这里并不全是原始属性名，private会在原始属性名前加上类名，protected则会加上*作为前缀
 * __offset__：这个值记录的就是上面说的通过数组保存的属性值的索引，也就是说属性值保存在一个数组中，然后将其在数组中的位置保存在offset中，另外需要说明的一点的是普通属性、静态属性这个值用法是不一样的，静态属性是类的范畴，与对象无关，所以其offset为default_static_members_table数组的下标：0,、1、2......，而普通属性归属于对象，每个对象有其各自的属性，所以这个offset记录的实际是 __各属性在object中偏移值__ (在后面《3.4.2 对象》一节我们再具体说明普通属性的存储方式)，其值是：40、56、72......是按照zval的内存大小偏移的
 * __flags__：bit位，标识的是属性的信息，如public、private、protected及是否为静态属性
 

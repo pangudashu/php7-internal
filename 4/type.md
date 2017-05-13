@@ -191,7 +191,7 @@ try_again:
 ### 4.1.6 转换为数组
 如果将一个null、integer、float、string、boolean 和 resource 类型的值转换为数组，将得到一个仅有一个元素的数组，其下标为 0，该元素即为此标量的值。换句话说，(array)$scalarValue 与 array($scalarValue) 完全一样。
 
-如果一个 object 类型转换为 array，则结果为一个数组，数组元素为该对象的全部属性，包括public、private、protected，其中private的属性转换后的key加上了类名作为前缀，protected属性的key加上了"*"作为前缀，举例来看：
+如果一个 object 类型转换为 array，则结果为一个数组，数组元素为该对象的全部属性，包括public、private、protected，其中private的属性转换后的key加上了类名作为前缀，protected属性的key加上了"*"作为前缀，但是这个前缀并不是转为数组时单独加上的，而是类编译生成属性zend_property_info时就已经加上了，也就是说这其实是成员属性本身的一个特点，举例来看：
 ```c
 class test {
 	private $a = 123;
@@ -250,7 +250,6 @@ static void convert_scalar_to_array(zval *op)
     zend_hash_index_add_new(Z_ARRVAL_P(op), 0, &entry);
 }
 ```
-
 ### 4.1.7 转换为对象
 
 ### 4.1.8 转换为资源
