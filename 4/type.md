@@ -189,6 +189,67 @@ try_again:
 ```
 
 ### 4.1.6 转换为数组
+如果将一个null、integer、float、string、boolean 和 resource 类型的值转换为数组，将得到一个仅有一个元素的数组，其下标为 0，该元素即为此标量的值。换句话说，(array)$scalarValue 与 array($scalarValue) 完全一样。
+
+如果一个 object 类型转换为 array，则结果为一个数组，数组元素为该对象的全部属性，包括public、private、protected，其中private的属性转换后的key加上了类名作为前缀，protected属性的key加上了"*"作为前缀，举例来看：
+```c
+class test {
+	private $a = 123;
+	public $b = "bbb";
+	protected $c = "ccc";
+}
+$obj = new test;
+print_r((array)$obj);
+======================
+Array
+(
+    [testa] => 123
+    [b] => bbb
+    [*c] => ccc
+)
+```
+转换时的处理：
+```c
+ZEND_API void ZEND_FASTCALL convert_to_array(zval *op)
+{
+	try_again:
+    switch (Z_TYPE_P(op)) {
+        case IS_ARRAY:
+            break;
+        case IS_OBJECT:
+			...
+			if (Z_OBJ_HT_P(op)->get_properties) {
+				//获取所有属性数组
+				HashTable *obj_ht = Z_OBJ_HT_P(op)->get_properties(op);
+				//将数组内容拷贝到新数组
+				...
+			}
+		case IS_NULL:
+            ZVAL_NEW_ARR(op);
+			//转为空数组
+            zend_hash_init(Z_ARRVAL_P(op), 8, NULL, ZVAL_PTR_DTOR, 0);
+            break;
+        case IS_REFERENCE:
+            zend_unwrap_reference(op);
+            goto try_again;
+        default:
+            convert_scalar_to_array(op);
+            break;
+    }
+}
+
+//其他标量类型转array
+static void convert_scalar_to_array(zval *op)
+{
+    zval entry;
+
+    ZVAL_COPY_VALUE(&entry, op);
+	//新分配一个数组，将原值插入数组
+    ZVAL_NEW_ARR(op);
+    zend_hash_init(Z_ARRVAL_P(op), 8, NULL, ZVAL_PTR_DTOR, 0);
+    zend_hash_index_add_new(Z_ARRVAL_P(op), 0, &entry);
+}
+```
 
 ### 4.1.7 转换为对象
 
