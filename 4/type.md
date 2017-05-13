@@ -251,5 +251,39 @@ static void convert_scalar_to_array(zval *op)
 }
 ```
 ### 4.1.7 转换为对象
+如果其它任何类型的值被转换成对象，将会创建一个内置类 stdClass 的实例：如果该值为 NULL，则新的实例为空；array转换成object将以键名成为属性名并具有相对应的值，数值索引的元素也将转为属性，但是无法通过"->"访问，只能遍历获取；对于其他值，会以scalar作为属性名。
 
+```c
+ZEND_API void ZEND_FASTCALL convert_to_object(zval *op)
+{
+try_again:
+	switch (Z_TYPE_P(op)) {
+		case IS_ARRAY:
+			{
+				HashTable *ht = Z_ARR_P(op);
+				...
+				//以key为属性名，将数组元素拷贝到对象属性
+				object_and_properties_init(op, zend_standard_class_def, ht);
+				break;
+			}
+		case IS_OBJECT:
+			break;
+		case IS_NULL:
+			object_init(op);
+			break;
+		case IS_REFERENCE:
+			zend_unwrap_reference(op);
+			goto try_again;
+		default: {
+		    zval tmp;
+            ZVAL_COPY_VALUE(&tmp, op);
+            object_init(op);
+			//以scalar作为属性名
+            zend_hash_str_add_new(Z_OBJPROP_P(op), "scalar", sizeof("scalar")-1, &tmp);
+            break;
+        }
+    }
+}
+```
 ### 4.1.8 转换为资源
+无法将其他类型转为资源。
