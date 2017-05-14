@@ -33,8 +33,7 @@
       * [3.4.3 继承](3/zend_extends.md)
       * [3.4.4 动态属性](3/zend_prop.md)
       * [3.4.5 魔术方法](3/zend_magic_method.md)
-      * 3.4.6 抽象类和接口
-      * [3.4.7 类的自动加载](3/zend_autoload.md)
+      * [3.4.6 类的自动加载](3/zend_autoload.md)
    * [3.5 运行时缓存](3/zend_runtime_cache.md)
 * 第4章 PHP基础语法实现
    * [4.1 类型转换](4/type.md)
@@ -45,8 +44,7 @@
    * [4.6 异常处理](4/exception.md)
 * 第5章 内存管理
    * [5.1 Zend内存池](5/zend_alloc.md)
-   * 5.2 引用计数
-   * [5.3 垃圾回收](5/gc.md)
+   * [5.2 垃圾回收](5/gc.md)
 * 第6章 线程安全
    * [6.1 什么是线程安全](6/ts.md)
    * [6.2 线程安全资源管理器](6/ts.md)
