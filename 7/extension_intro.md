@@ -44,15 +44,46 @@ PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、
 * __PHP版本__
 * __PHP源码的头文件目录：__ `-Ixx/include/php -Ixx/main -Ixx/TSRM -Ixx/Zend -Ixx/ext -Ixx/ext/date/lib`，编译扩展时需要知道这些include的目录
 * __LDFLAGS：__ 外部库路径，比如：`-L/usr/bib -L/usr/local/lib`
-* 依赖的外部库：告诉编译器要链接哪些文件，`-lcrypt   -lresolv -lcrypt`等等
-* 扩展存放目录：扩展.so保存位置，安装扩展make install时将安装到此路径下
-* 编译的SAPI：如cli、fpm、cgi等
-* PHP编译参数：执行./configure时带的参数
+* __依赖的外部库：__ 告诉编译器要链接哪些文件，`-lcrypt   -lresolv -lcrypt`等等
+* __扩展存放目录：__ 扩展.so保存位置，安装扩展make install时将安装到此路径下
+* __编译的SAPI：__ 如cli、fpm、cgi等
+* __PHP编译参数：__ 执行./configure时带的参数
 * ...
 
 这个脚本在编译扩展时会用到，执行`./configure --with-php-config=xxx`生成Makefile时作为参数传入即可，它的作用是给configure.in使用生成扩展的编译配置的。
 
 #### 7.1.2.3 phpize
+这个脚本主要是操作复杂的autoconf/automake/autoheader/autolocal等系列命令，用于生成configure文件，GNU auto系列的工具众多，这里简单介绍下基本的使用：
+
+(1)autoscan：在源码目录下扫描，生成configure.scan，然后把这个文件重名为为configure.in，可以在这个文件里对依赖的文件、库进行检查以及配置一些编译参数等。
+
+(2)aclocal：automake中有很多宏可以在configure.in或其它.m4配置中使用，这些宏必须定义在aclocal.m4中，否则将无法被autoconf识别，aclocal可以根据configure.in自动生成aclocal.m4，另外，autoconf提供的特性不可能满足所有的需求，所以autoconf还支持自定义宏，用户可以在acinclude.m4中定义自己的宏，然后在执行aclocal生成aclocal.m4时也会将acinclude.m4加载进去。
+
+(3)autoheader：它可以根据configure.in、aclocal.m4生成一个C语言"define"声明的头文件模板(config.h.in)供configure执行时使用，比如很多程序会通过configure提供一些enable/disable的参数，然后根据不同的参数决定是否开启某些选项，这种就可以根据编译参数的值生成一个define宏，比如：`--enabled-xxx`生成`#define ENABLED_XXX 1`，否则默认生成`#define ENABLED_XXX 0`，代码里直接使用这个宏即可。比如configure.in文件内容如下：
+```c
+AC_PREREQ([2.63])
+AC_INIT([FULL-PACKAGE-NAME], [VERSION], [BUG-REPORT-ADDRESS])
+
+AC_CONFIG_HEADERS([config.h])
+
+AC_ARG_ENABLE(xxx, "--enable-xxx if enable xxx",[
+    AC_DEFINE([ENABLED_XXX], [1], [enabled xxx])
+],
+[
+    AC_DEFINE([ENABLED_XXX], [0], [disabled xxx])
+])
+
+AC_OUTPUT
+```
+执行autoheader后将生成一个config.h.in的文件，里面包含`#undef ENABLED_XXX`，最终执行`./configure --enable-xxx`后将生成一个config.h文件，包含`#define ENABLED_XXX 1`。
+
+(4)autoconf：将configure.in中的宏展开生成configure、config.h，此过程会用到aclocal.m4中定义的宏。
+
+(5)automake：将Makefile.am中定义的结构建立Makefile.in，然后configure脚本将生成的Makefile.in文件转换为Makefile。
+
+各步骤之间的转化关系如下图：
+
+![](../img/autoconf.png)
 
 ### 7.1.3 编写扩展的基本步骤
 编写一个PHP扩展主要分为以下几步：
