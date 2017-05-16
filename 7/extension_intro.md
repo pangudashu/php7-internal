@@ -19,12 +19,38 @@ PHP中的扩展分为两类：PHP扩展、Zend扩展，对内核而言这两个�
 PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、php-config，后面两个脚本主要配合autoconf、automake生成Makefile。
 
 #### 7.1.2.1 ext_skel
-这个脚本位于PHP源码ext目录下，它的作用是用来生成扩展的基本骨架，帮助开发者快速生成一个规范的扩展结构，可以通过以下命令生成一个扩展结构：
-```shell
+这个脚本位于PHP源码/ext目录下，它的作用是用来生成扩展的基本骨架，帮助开发者快速生成一个规范的扩展结构，可以通过以下命令生成一个扩展结构：
+```c
 ./ext_skel --extname=扩展名称
 ```
-
+执行完以后会在ext目录下新生成一个扩展目录，比如extname是mytest，则将生成以下文件：
+```c
+|---mytest 
+|   |--- config.m4     //autoconf规则的编译配置文件
+|   |--- config.w32    //windows环境的配置
+|   |--- CREDITS
+|   |--- EXPERIMENTAL
+|   |--- include       //依赖库的include头文件，可以不用
+|   |--- mytest.c      //扩展源码
+|   |--- php_mytest.h  //头文件
+|   |--- mytest.php    //用于在PHP中测试扩展是否可用，可以不用
+|   |--- tests         //测试用例，执行make test时将执行、验证这些用例
+|        |--- 001.phpt
+```
+这个脚本主要生成了编译需要的配置以及扩展的基本结构，初步生成的这个扩展可以成功的编译、安装、使用，实际开发中我们可以使用这个脚本生成一个基本结构，然后根据具体的需要逐步完善。
 ### 7.1.2.2 php-config
+这个脚本为PHP源码中的/script/php-config.in，PHP安装后被移到安装路径的/bin目录下，并重命名为php-config，这个脚本主要是获取PHP的安装信息的，主要有：
+* __PHP安装路径__
+* __PHP版本__
+* __PHP源码的头文件目录：__ `-Ixx/include/php -Ixx/main -Ixx/TSRM -Ixx/Zend -Ixx/ext -Ixx/ext/date/lib`，编译扩展时需要知道这些include的目录
+* __LDFLAGS：__ 外部库路径，比如：`-L/usr/bib -L/usr/local/lib`
+* 依赖的外部库：告诉编译器要链接哪些文件，`-lcrypt   -lresolv -lcrypt`等等
+* 扩展存放目录：扩展.so保存位置，安装扩展make install时将安装到此路径下
+* 编译的SAPI：如cli、fpm、cgi等
+* PHP编译参数：执行./configure时带的参数
+* ...
+
+这个脚本在编译扩展时会用到，执行`./configure --with-php-config=xxx`生成Makefile时作为参数传入即可，它的作用是给configure.in使用生成扩展的编译配置的。
 
 #### 7.1.2.3 phpize
 
