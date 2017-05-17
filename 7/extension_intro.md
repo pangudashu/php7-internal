@@ -16,7 +16,36 @@ C语言是PHP之母，笔者认为：C语言是世界上最好的语言！自它
 PHP中的扩展分为两类：PHP扩展、Zend扩展，对内核而言这两个分别称之为：模块(module)、扩展(extension)，本章主要介绍是PHP扩展，也就是模块。
 
 ### 7.1.2 脚本工具
-PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、php-config，后面两个脚本主要配合autoconf、automake生成Makefile。
+PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、php-config，后面两个脚本主要配合autoconf、automake生成Makefile。在介绍这几个工具之前，我们先看下PHP安装后的目录结构，因为很多脚本、配置都放置在安装后的目录中，比如PHP的安装路径为：/usr/local/php7，则此目录的主要结构：
+```c
+|---php7
+|   |---bin //php编译生成的二进制程序目录
+|       |---php //cli模式的php
+|       |---phpize      
+|       |---php-config
+|       |---...
+|   |---etc     //一些sapi的配置    
+|   |---include //php源码的头文件
+|       |---php
+|           |---main    //PHP中的头文件
+|           |---Zend    //Zend头文件
+|           |---TSRM    //TSRM头文件
+|           |---ext     //扩展头文件
+|           |---sapi    //SAPI头文件
+|           |---include
+|   |---lib //依赖的so库
+|       |---php
+|           |---extensions  //扩展so保存目录
+|           |---build       //编译时的工具、m4配置等，编写扩展是会用到
+|               |---acinclude.m4    //PHP自定义的autoconf宏
+|               |---libtool.m4      //libtool定义的autoconf宏，acinclude.m4、libtool.m4会被合成aclocal.m4
+|               |---phpize.m4       //PHP核心configure.in配置
+|               |---...
+|           |---...
+|   |---php
+|   |---sbin //SAPI编译生成的二进制程序，php-fpm会放在这
+|   |---var  //log、run日志
+```
 
 #### 7.1.2.1 ext_skel
 这个脚本位于PHP源码/ext目录下，它的作用是用来生成扩展的基本骨架，帮助开发者快速生成一个规范的扩展结构，可以通过以下命令生成一个扩展结构：
@@ -26,23 +55,23 @@ PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、
 执行完以后会在ext目录下新生成一个扩展目录，比如extname是mytest，则将生成以下文件：
 ```c
 |---mytest 
-|   |--- config.m4     //autoconf规则的编译配置文件
-|   |--- config.w32    //windows环境的配置
-|   |--- CREDITS
-|   |--- EXPERIMENTAL
-|   |--- include       //依赖库的include头文件，可以不用
-|   |--- mytest.c      //扩展源码
-|   |--- php_mytest.h  //头文件
-|   |--- mytest.php    //用于在PHP中测试扩展是否可用，可以不用
-|   |--- tests         //测试用例，执行make test时将执行、验证这些用例
-|        |--- 001.phpt
+|   |---config.m4     //autoconf规则的编译配置文件
+|   |---config.w32    //windows环境的配置
+|   |---CREDITS
+|   |---EXPERIMENTAL
+|   |---include       //依赖库的include头文件，可以不用
+|   |---mytest.c      //扩展源码
+|   |---php_mytest.h  //头文件
+|   |---mytest.php    //用于在PHP中测试扩展是否可用，可以不用
+|   |---tests         //测试用例，执行make test时将执行、验证这些用例
+|       |---001.phpt
 ```
 这个脚本主要生成了编译需要的配置以及扩展的基本结构，初步生成的这个扩展可以成功的编译、安装、使用，实际开发中我们可以使用这个脚本生成一个基本结构，然后根据具体的需要逐步完善。
 ### 7.1.2.2 php-config
 这个脚本为PHP源码中的/script/php-config.in，PHP安装后被移到安装路径的/bin目录下，并重命名为php-config，这个脚本主要是获取PHP的安装信息的，主要有：
 * __PHP安装路径__
 * __PHP版本__
-* __PHP源码的头文件目录：__ `-Ixx/include/php -Ixx/main -Ixx/TSRM -Ixx/Zend -Ixx/ext -Ixx/ext/date/lib`，编译扩展时需要知道这些include的目录
+* __PHP源码的头文件目录：__ main、Zend、ext、TSRM中的头文件，编写扩展时会用到这些头文件，这些头文件保存在PHP安装位置/include/php目录下
 * __LDFLAGS：__ 外部库路径，比如：`-L/usr/bib -L/usr/local/lib`
 * __依赖的外部库：__ 告诉编译器要链接哪些文件，`-lcrypt   -lresolv -lcrypt`等等
 * __扩展存放目录：__ 扩展.so保存位置，安装扩展make install时将安装到此路径下
@@ -87,8 +116,12 @@ __(5)automake：__ 将Makefile.am中定义的结构建立Makefile.in，然后con
 
 编写PHP扩展时并不需要操作上面全部的步骤，PHP提供了两个编辑好的配置：configure.in、acinclude.m4，这两个配置是从PHP安装路径/lib/php/build目录下的phpize.m4、acinclude.m4复制生成的，其中configure.in中定义了一些PHP内核相关的配置检查项，另外这个文件会include每个扩展各自的配置:config.m4，所以编写扩展时我们只需要在config.m4中定义扩展自己的配置就可以了，不需要关心依赖的PHP内核相关的配置，在扩展所在目录下执行phpize就可以生成扩展的configure、config.h文件了，下面看下phpize中的主要操作：
 
-* (1)phpize_check_configm4: 检查扩展的config.m4是否存在。
-* (2)phpize_check_build_files:
+__(1)phpize_check_configm4:__ 检查扩展的config.m4是否存在。
+
+__(2)phpize_check_build_files:__ 检查php安装路径下的lib/php/build/，这个目录下包含PHP自定义的autoconf宏文件acinclude.m4以及libtool；检查扩展所在目录。
+
+__(3)phpize_print_api_numbers:__ 输出PHP Api Version、Zend Module Api No、Zend Extension Api No信息，这些信息是从PHP
+
 
 ### 7.1.3 编写扩展的基本步骤
 编写一个PHP扩展主要分为以下几步：
