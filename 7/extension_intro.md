@@ -89,7 +89,7 @@ __(1)autoscan：__ 在源码目录下扫描，生成configure.scan，然后把�
 __(2)aclocal：__ automake中有很多宏可以在configure.in或其它.m4配置中使用，这些宏必须定义在aclocal.m4中，否则将无法被autoconf识别，aclocal可以根据configure.in自动生成aclocal.m4，另外，autoconf提供的特性不可能满足所有的需求，所以autoconf还支持自定义宏，用户可以在acinclude.m4中定义自己的宏，然后在执行aclocal生成aclocal.m4时也会将acinclude.m4加载进去。
 
 __(3)autoheader：__ 它可以根据configure.in、aclocal.m4生成一个C语言"define"声明的头文件模板(config.h.in)供configure执行时使用，比如很多程序会通过configure提供一些enable/disable的参数，然后根据不同的参数决定是否开启某些选项，这种就可以根据编译参数的值生成一个define宏，比如：`--enabled-xxx`生成`#define ENABLED_XXX 1`，否则默认生成`#define ENABLED_XXX 0`，代码里直接使用这个宏即可。比如configure.in文件内容如下：
-```c
+```sh
 AC_PREREQ([2.63])
 AC_INIT([FULL-PACKAGE-NAME], [VERSION], [BUG-REPORT-ADDRESS])
 
@@ -114,14 +114,50 @@ __(5)automake：__ 将Makefile.am中定义的结构建立Makefile.in，然后con
 
 ![](../img/autoconf.png)
 
-编写PHP扩展时并不需要操作上面全部的步骤，PHP提供了两个编辑好的配置：configure.in、acinclude.m4，这两个配置是从PHP安装路径/lib/php/build目录下的phpize.m4、acinclude.m4复制生成的，其中configure.in中定义了一些PHP内核相关的配置检查项，另外这个文件会include每个扩展各自的配置:config.m4，所以编写扩展时我们只需要在config.m4中定义扩展自己的配置就可以了，不需要关心依赖的PHP内核相关的配置，在扩展所在目录下执行phpize就可以生成扩展的configure、config.h文件了，下面看下phpize中的主要操作：
+编写PHP扩展时并不需要操作上面全部的步骤，PHP提供了两个编辑好的配置：configure.in、acinclude.m4，这两个配置是从PHP安装路径/lib/php/build目录下的phpize.m4、acinclude.m4复制生成的，其中configure.in中定义了一些PHP内核相关的配置检查项，另外这个文件会include每个扩展各自的配置:config.m4，所以编写扩展时我们只需要在config.m4中定义扩展自己的配置就可以了，不需要关心依赖的PHP内核相关的配置，在扩展所在目录下执行phpize就可以生成扩展的configure、config.h文件了。
+
+phpize中的主要操作：
 
 __(1)phpize_check_configm4:__ 检查扩展的config.m4是否存在。
 
 __(2)phpize_check_build_files:__ 检查php安装路径下的lib/php/build/，这个目录下包含PHP自定义的autoconf宏文件acinclude.m4以及libtool；检查扩展所在目录。
 
-__(3)phpize_print_api_numbers:__ 输出PHP Api Version、Zend Module Api No、Zend Extension Api No信息，这些信息是从PHP
+__(3)phpize_print_api_numbers:__ 输出PHP Api Version、Zend Module Api No、Zend Extension Api No信息。
+```sh
+phpize_get_api_numbers()
+{
+  # extracting API NOs:
+  PHP_API_VERSION=`grep '#define PHP_API_VERSION' $includedir/main/php.h|$SED 's/#define PHP_API_VERSION//'`
+  ZEND_MODULE_API_NO=`grep '#define ZEND_MODULE_API_NO' $includedir/Zend/zend_modules.h|$SED 's/#define ZEND_MODULE_API_NO//'`
+  ZEND_EXTENSION_API_NO=`grep '#define ZEND_EXTENSION_API_NO' $includedir/Zend/zend_extensions.h|$SED 's/#define ZEND_EXTENSION_API_NO//'`
+}
+```
+__(4)phpize_copy_files:__ 将PHP安装位置/lib/php/build目录下的mkdep.awk scan_makefile_in.awk shtool libtool.m4四个文件拷到扩展的build目录下，然后将acinclude.m4 Makefile.global config.sub config.guess ltmain.sh run-tests*.php文件拷到扩展根目录，最后将acinclude.m4、build/libtool.m4合并到扩展目录下的aclocal.m4文件中。
+```sh
+phpize_copy_files()
+{
+  test -d build || mkdir build
 
+  (cd "$phpdir" && cp $FILES_BUILD "$builddir"/build)
+  (cd "$phpdir" && cp $FILES "$builddir")
+  #acinclude.m4、libtool.m4合并到aclocal.m4
+  (cd "$builddir" && cat acinclude.m4 ./build/libtool.m4 > aclocal.m4) 
+}
+```
+__(5)phpize_replace_prefix:__ 将PHP安装位置/lib/php/build/phpize.m4拷贝到扩展目录下，将文件中的prefix替换为PHP安装路径，然后重命名为configure.in。
+```sh
+phpize_replace_prefix()
+{
+  $SED \
+  -e "s#/usr/local/php7#$prefix#" \
+  < "$phpdir/phpize.m4" > configure.in
+}
+```
+__(6)phpize_check_shtool:__ 检查/build/shtool。
+
+__(7)phpize_check_autotools:__ 检查autoconf、autoheader。
+
+__(8)phpize_autotools__ 执行autoconf生成configure，然后再执行autoheader生成config.h。
 
 ### 7.1.3 编写扩展的基本步骤
 编写一个PHP扩展主要分为以下几步：
