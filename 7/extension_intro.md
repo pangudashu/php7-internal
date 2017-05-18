@@ -79,7 +79,7 @@ PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、
 * __PHP编译参数：__ 执行./configure时带的参数
 * ...
 
-这个脚本在编译扩展时会用到，执行`./configure --with-php-config=xxx`生成Makefile时作为参数传入即可，它的作用是给configure.in使用生成扩展的编译配置的。
+这个脚本在编译扩展时会用到，执行`./configure --with-php-config=xxx`生成Makefile时作为参数传入即可，它的作用是提供给configure.in获取上面几个配置，生成Makefile。
 
 #### 7.1.2.3 phpize
 这个脚本主要是操作复杂的autoconf/automake/autoheader/autolocal等系列命令，用于生成configure文件，GNU auto系列的工具众多，这里简单介绍下基本的使用：
@@ -116,7 +116,25 @@ __(5)automake：__ 将Makefile.am中定义的结构建立Makefile.in，然后con
 
 编写PHP扩展时并不需要操作上面全部的步骤，PHP提供了两个编辑好的配置：configure.in、acinclude.m4，这两个配置是从PHP安装路径/lib/php/build目录下的phpize.m4、acinclude.m4复制生成的，其中configure.in中定义了一些PHP内核相关的配置检查项，另外这个文件会include每个扩展各自的配置:config.m4，所以编写扩展时我们只需要在config.m4中定义扩展自己的配置就可以了，不需要关心依赖的PHP内核相关的配置，在扩展所在目录下执行phpize就可以生成扩展的configure、config.h文件了。
 
-phpize中的主要操作：
+configure.in(phpize.m4)：
+```sh
+AC_PREREQ(2.59)
+AC_INIT(config.m4)
+...
+#--with-php-config参数
+PHP_ARG_WITH(php-config,,
+[  --with-php-config=PATH  Path to php-config [php-config]], php-config, no)
+
+PHP_CONFIG=$PHP_PHP_CONFIG
+...
+#加载扩展配置
+sinclude(config.m4)
+...
+AC_CONFIG_HEADER(config.h)
+
+AC_OUTPUT()
+```
+__phpize中的主要操作：__
 
 __(1)phpize_check_configm4:__ 检查扩展的config.m4是否存在。
 
@@ -161,16 +179,16 @@ __(8)phpize_autotools__ 执行autoconf生成configure，然后再执行autoheade
 
 ### 7.1.3 编写扩展的基本步骤
 编写一个PHP扩展主要分为以下几步：
-* 通过ext目录下ext_skel脚本生成扩展的基本框架：`./ext_skel --extname`，这个脚本生成一个新的扩展目录，并生成了扩展所需的基本文件；
-* 修改config.m4配置：这个是autoconf语法的配置文件，可以根据不同的编译环境生成不同的宏定义，以及设置依赖的库；
+* 通过ext目录下ext_skel脚本生成扩展的基本框架：`./ext_skel --extname`；
+* 修改config.m4配置：设置编译配置参数、设置扩展的源文件、依赖库/函数检查等等；
 * 编写扩展要实现的功能：按照PHP扩展的格式以及PHP提供的API编写功能；
-* 生成configure：扩展编写完成后执行phpize脚本生成configure及其它配置文件，phpize是一个shell脚本；
+* 生成configure：扩展编写完成后执行phpize脚本生成configure及其它配置文件；
 * 编译&安装：./configure、make、make install，然后将扩展的.so路径添加到php.ini中。
 
 最后就可以在PHP中使用这个扩展了。
 
 ### 7.1.4 扩展的组成部分
-扩展最核心的部分就是`zend_module_entry`结构，每个扩展拥有这样一个结构，内核通过这个结构得到这个扩展都提供了哪些功能，换句话说，一个扩展可以只包含一个`zend_module_entry`结构，相当于定义了一个什么功能都没有的扩展。
+扩展首先需要创建一个`zend_module_entry`结构，这个变量必须是全局变量，且变量名必须是：`扩展名称_module_entry`，内核通过这个结构得到这个扩展都提供了哪些功能，换句话说，一个扩展可以只包含一个`zend_module_entry`结构，相当于定义了一个什么功能都没有的扩展。
 ```c
 //zend_modules.h
 struct _zend_module_entry {
@@ -188,12 +206,7 @@ struct _zend_module_entry {
     int (*request_shutdown_func)(SHUTDOWN_FUNC_ARGS); //请求结束时回调函数
     void (*info_func)(ZEND_MODULE_INFO_FUNC_ARGS); //php_info展示的扩展信息处理函数
     const char *version; //版本
-    size_t globals_size;
-    void* globals_ptr;
-    void (*globals_ctor)(void *global);
-    void (*globals_dtor)(void *global);
-    int (*post_deactivate_func)(void);
-    int module_started;
+    ...
     unsigned char type;
     void *handle;
     int module_number; //扩展的唯一编号
@@ -210,12 +223,41 @@ struct _zend_module_entry {
 * __info_func:__ php_info()函数时调用，用于展示一些配置、运行信息
 * __version:__ 扩展版本
 
-除了上面这些需要手动设置的成员，其它部分可以通过`STANDARD_MODULE_HEADER`、`STANDARD_MODULE_PROPERTIES`宏完成标准定义。
+除了上面这些需要手动设置的成员，其它部分可以通过`STANDARD_MODULE_HEADER`、`STANDARD_MODULE_PROPERTIES`宏统一设置。有了这个结构还需要提供一个接口来获取这个结构变量，这个接口是统一的，扩展中通过`ZEND_GET_MODULE(extension_name)`完成这个接口的定义:
+```
+//zend_API.h
+#define ZEND_GET_MODULE(name) \
+    BEGIN_EXTERN_C()\
+    ZEND_DLEXPORT zend_module_entry *get_module(void) { return &name##_module_entry; }\
+    END_EXTERN_C()
+```
+展开后可以看到，实际就是定义了一个get_module()函数，返回扩展zend_module_entry结构的地址，这就是为什么这个结构的变量名必须是`扩展名称_module_entry`这种格式的原因。
 
-### 7.1.5 编译配置
-使用C语言编写程序时通常会编写一个Makefile，但是大型项目中Makefile将会非常复杂，而且不同的编译环境下也要对这个文件进行相应的修改，很不方便。很多开源软件编译过程非常简单(三板斧)：configure、make、make install，这就是通过自动编译配置实现的，PHP使用的是automake/autoconf等，GNU的Autotool系列工具非常多，初学起来也比较复杂，这里不作过多说明，只简单介绍下与扩展相关的基本用法。
+有了扩展的zend_module_entry结构以及获取这个结构的接口一个合格的扩展就编写完成了，只是这个扩展目前还什么都干不了：
+```c
+#include "php.h"
+#include "php_ini.h"
+#include "ext/standard/info.h"
 
-一个简单的扩展配置只需要以下内容：
+zend_module_entry mytest_module_entry = {
+    STANDARD_MODULE_HEADER,
+    "mytest",
+    NULL, //mytest_functions,
+    NULL, //PHP_MINIT(mytest),
+    NULL, //PHP_MSHUTDOWN(mytest),
+    NULL, //PHP_RINIT(mytest),
+    NULL, //PHP_RSHUTDOWN(mytest),
+    NULL, //PHP_MINFO(mytest),
+    "1.0.0",
+    STANDARD_MODULE_PROPERTIES
+};
+
+ZEND_GET_MODULE(mytest)
+```
+编译、安装后执行`php -m`就可以看到my_test这个扩展了。
+
+### 7.1.5 config.m4
+config.m4是扩展的编译配置文件，它被include到configure.in文件中，最终被autoconf编译为configure，一个简单的扩展配置只需要以下内容：
 ```c
 PHP_ARG_WITH(扩展名称, for mytest support,
 Make sure that the comment is aligned:
@@ -225,7 +267,7 @@ if test "$PHP_扩展名称" != "no"; then
     PHP_NEW_EXTENSION(扩展名称, 源码文件列表, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
 fi
 ```
-PHP_ARG_WITH()、PHP_NEW_EXTENSION()是PHP自定义的autoconf宏，这些宏封装了autoconf的操作，简化了复杂的配置，它们定义在aclocal.m4、acinclude.m4中，通过AC_DEFUN()定义，
+PHP_ARG_WITH()、PHP_NEW_EXTENSION()是PHP自定义的autoconf宏，这些宏封装了autoconf/automake的操作，简化了复杂的配置，它们定义在acinclude.m4中，通过AC_DEFUN()定义，
 
 `PHP_ARG_WITH()`有三个参数，第一个是扩展名称，第二个是运行configure时的展示的信息，第三个是运行`configure --help`时展示的信息。`PHP_NEW_EXTENSION()`这个宏
 
