@@ -267,7 +267,7 @@ if test "$PHP_扩展名称" != "no"; then
     PHP_NEW_EXTENSION(扩展名称, 源码文件列表, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
 fi
 ```
-PHP在acinclude.m4中定义了很多可以直接使用的宏，下面介绍几个常用的宏：
+PHP在acinclude.m4中基于autoconf/automake的宏封装了很多可以直接使用的宏，下面介绍几个比较常用的宏：
 
 __(1)PHP_ARG_WITH(arg_name,check message,help info):__ 定义一个`--with-feature[=arg]`这样的编译参数，调用的是autoconf的AC_ARG_WITH，这个宏有5个参数，常用的是前三个，分别表示：参数名、执行./configure是展示信息、执行--help时展示信息，第4个参数为默认值，如果不定义默认为"no"，通过这个宏定义的参数可以在config.m4中通过`$PHP_参数名(大写)`访问，比如：
 ```sh
@@ -283,4 +283,14 @@ __(4)AC_DEFINE(variable, value, [description]):__ 定义一个宏，比如：`AC
 
 __(5)PHP_ADD_INCLUDE(path):__ 添加include路径，即：`gcc -Iinclude_dir`，`#include "file";`将先在通过-I指定的目录下查找，扩展引用了外部库或者扩展下分了多个目录的情况下会用到这个宏。
 
-__(6)__
+__(6)PHP_CHECK_LIBRARY(library, function [, action-found [, action-not-found [, extra-libs]]]):__ 检查依赖的库中是否存在需要的function，action-found为存在时执行的动作，action-not-found为不存在时执行的动作，比如扩展里使用到线程pthread，检查pthread_create()，如果没找到则终止./configure执行：
+```sh
+PHP_ADD_INCLUDE(pthread, pthread_create, [], [
+    AC_MSG_ERROR([not find pthread_create() in lib pthread])
+])
+```
+__(7)PHP_ADD_LIBRARY_WITH_PATH($LIBNAME, $XXX_DIR/$PHP_LIBDIR, XXX_SHARED_LIBADD):__ 添加链接库。
+
+__(8)PHP_NEW_EXTENSION(extname, sources [, shared [, sapi_class [, extra-cflags [, cxx [, zend_ext]]]]]):__ 注册一个扩展，添加扩展源文件，确定此扩展是动态库还是静态库，每个扩展的config.m4中都需要通过这个宏完成扩展的编译配置。
+
+
