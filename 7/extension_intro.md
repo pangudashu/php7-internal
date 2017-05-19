@@ -257,7 +257,7 @@ ZEND_GET_MODULE(mytest)
 编译、安装后执行`php -m`就可以看到my_test这个扩展了。
 
 ### 7.1.5 config.m4
-config.m4是扩展的编译配置文件，它被include到configure.in文件中，最终被autoconf编译为configure，一个简单的扩展配置只需要以下内容：
+config.m4是扩展的编译配置文件，它被include到configure.in文件中，最终被autoconf编译为configure，编写扩展时我们只需要在config.m4中修改配置即可，一个简单的扩展配置只需要包含以下内容：
 ```c
 PHP_ARG_WITH(扩展名称, for mytest support,
 Make sure that the comment is aligned:
@@ -267,7 +267,20 @@ if test "$PHP_扩展名称" != "no"; then
     PHP_NEW_EXTENSION(扩展名称, 源码文件列表, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
 fi
 ```
-PHP_ARG_WITH()、PHP_NEW_EXTENSION()是PHP自定义的autoconf宏，这些宏封装了autoconf/automake的操作，简化了复杂的配置，它们定义在acinclude.m4中，通过AC_DEFUN()定义，
+PHP在acinclude.m4中定义了很多可以直接使用的宏，下面介绍几个常用的宏：
 
-`PHP_ARG_WITH()`有三个参数，第一个是扩展名称，第二个是运行configure时的展示的信息，第三个是运行`configure --help`时展示的信息。`PHP_NEW_EXTENSION()`这个宏
+__(1)PHP_ARG_WITH(arg_name,check message,help info):__ 定义一个`--with-feature[=arg]`这样的编译参数，调用的是autoconf的AC_ARG_WITH，这个宏有5个参数，常用的是前三个，分别表示：参数名、执行./configure是展示信息、执行--help时展示信息，第4个参数为默认值，如果不定义默认为"no"，通过这个宏定义的参数可以在config.m4中通过`$PHP_参数名(大写)`访问，比如：
+```sh
+PHP_ARG_WITH(aaa, aaa-configure, help aa)
 
+#后面通过$PHP_AAA就可以读取到--with-aaa=xxx设置的值了
+```
+__(2)PHP_ARG_ENABLE(arg_name,check message,help info):__ 定义一个`--enable-feature[=arg]`或`--disable-feature`参数，`--disable-feature`等价于`--enable-feature=no`，这个宏与PHP_ARG_WITH类似，通常情况下如果配置的参数需要额外的arg值会使用PHP_ARG_WITH，而如果不需要arg值，只用于开关配置则会使用PHP_ARG_ENABLE。
+
+__(3)AC_MSG_CHECKING()/AC_MSG_RESULT()/AC_MSG_ERROR():__ ./configure时输出结果，其中error将会中断configure执行。
+
+__(4)AC_DEFINE(variable, value, [description]):__ 定义一个宏，比如：`AC_DEFINE(IS_DEBUG, 1, [])`，执行autoheader时将在头文件中生成：`#define IS_DEBUG 1`。
+
+__(5)PHP_ADD_INCLUDE(path):__ 添加include路径，即：`gcc -Iinclude_dir`，`#include "file";`将先在通过-I指定的目录下查找，扩展引用了外部库或者扩展下分了多个目录的情况下会用到这个宏。
+
+__(6)__
