@@ -1,21 +1,5 @@
-## 7.1 扩展的构成及编译
-
-### 7.1.1 扩展能做什么
-扩展是PHP的重要组成部分，它是PHP提供给开发者用于扩展PHP语言功能的主要方式。开发者可以用C/C++定义自己的功能，通过扩展嵌入到PHP中，灵活的扩展能力使得PHP拥有了大量、丰富的第三方组件，这些扩展很好的补充了PHP的功能、特性，大大提高了PHPer的开发效率，使得PHP在web开发中得以大展身手。
-
-C语言是PHP之母，笔者认为：C语言是世界上最好的语言！自它诞生至今，C语言孕育了大量优秀、知名的项目：Linux、Nginx、MySQL、PHP、Redis、Memcached等等，感谢里奇带给这个世界如此伟大的一份礼物。C语言的优秀也折射到PHP身上，但是PHP内核提供的功能终究有限，如果你发现PHP在某些方面已经满足不了你的需求了，那么不妨试试扩展，当然扩展也不是万能的。
-
-常见的，扩展可以在以下几个方面有所作为：
-* __介入PHP的编译、执行阶段：__ 可以介入PHP框架执行的那5个阶段，比如opcache，就是重定义了编译函数
-* __提供内部函数：__ 可以定义内部函数扩充PHP的函数功能，比如array、date等操作
-* __提供内部类__
-* __实现RPC客户端：__  实现与外部服务的交互，比如redis、mysql等
-* __提升执行性能：__ PHP是解析型语言，在性能方面远不及C语言，可以将耗cpu的操作以C语言代替
-* ......
-
-PHP中的扩展分为两类：PHP扩展、Zend扩展，对内核而言这两个分别称之为：模块(module)、扩展(extension)，本章主要介绍是PHP扩展，也就是模块。
-
-### 7.1.2 脚本工具
+## 7.3 扩展的构成及编译
+### 7.3.1 脚本工具
 PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、php-config，后面两个脚本主要配合autoconf、automake生成Makefile。在介绍这几个工具之前，我们先看下PHP安装后的目录结构，因为很多脚本、配置都放置在安装后的目录中，比如PHP的安装路径为：/usr/local/php7，则此目录的主要结构：
 ```c
 |---php7
@@ -47,7 +31,7 @@ PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、
 |   |---var  //log、run日志
 ```
 
-#### 7.1.2.1 ext_skel
+#### 7.3.1.1 ext_skel
 这个脚本位于PHP源码/ext目录下，它的作用是用来生成扩展的基本骨架，帮助开发者快速生成一个规范的扩展结构，可以通过以下命令生成一个扩展结构：
 ```c
 ./ext_skel --extname=扩展名称
@@ -67,7 +51,7 @@ PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、
 |       |---001.phpt
 ```
 这个脚本主要生成了编译需要的配置以及扩展的基本结构，初步生成的这个扩展可以成功的编译、安装、使用，实际开发中我们可以使用这个脚本生成一个基本结构，然后根据具体的需要逐步完善。
-### 7.1.2.2 php-config
+### 7.3.1.2 php-config
 这个脚本为PHP源码中的/script/php-config.in，PHP安装后被移到安装路径的/bin目录下，并重命名为php-config，这个脚本主要是获取PHP的安装信息的，主要有：
 * __PHP安装路径__
 * __PHP版本__
@@ -81,7 +65,7 @@ PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、
 
 这个脚本在编译扩展时会用到，执行`./configure --with-php-config=xxx`生成Makefile时作为参数传入即可，它的作用是提供给configure.in获取上面几个配置，生成Makefile。
 
-#### 7.1.2.3 phpize
+#### 7.3.1.3 phpize
 这个脚本主要是操作复杂的autoconf/automake/autoheader/autolocal等系列命令，用于生成configure文件，GNU auto系列的工具众多，这里简单介绍下基本的使用：
 
 __(1)autoscan：__ 在源码目录下扫描，生成configure.scan，然后把这个文件重名为为configure.in，可以在这个文件里对依赖的文件、库进行检查以及配置一些编译参数等。
@@ -177,7 +161,7 @@ __(7)phpize_check_autotools:__ 检查autoconf、autoheader。
 
 __(8)phpize_autotools__ 执行autoconf生成configure，然后再执行autoheader生成config.h。
 
-### 7.1.3 编写扩展的基本步骤
+### 7.3.2 编写扩展的基本步骤
 编写一个PHP扩展主要分为以下几步：
 * 通过ext目录下ext_skel脚本生成扩展的基本框架：`./ext_skel --extname`；
 * 修改config.m4配置：设置编译配置参数、设置扩展的源文件、依赖库/函数检查等等；
@@ -187,7 +171,7 @@ __(8)phpize_autotools__ 执行autoconf生成configure，然后再执行autoheade
 
 最后就可以在PHP中使用这个扩展了。
 
-### 7.1.4 扩展的构成
+### 7.3.3 扩展的构成
 扩展首先需要创建一个`zend_module_entry`结构，这个变量必须是全局变量，且变量名必须是：`扩展名称_module_entry`，内核通过这个结构得到这个扩展都提供了哪些功能，换句话说，一个扩展可以只包含一个`zend_module_entry`结构，相当于定义了一个什么功能都没有的扩展。
 ```c
 //zend_modules.h
@@ -256,7 +240,7 @@ ZEND_GET_MODULE(mytest)
 ```
 编译、安装后执行`php -m`就可以看到my_test这个扩展了。
 
-### 7.1.5 config.m4
+### 7.3.4 config.m4
 config.m4是扩展的编译配置文件，它被include到configure.in文件中，最终被autoconf编译为configure，编写扩展时我们只需要在config.m4中修改配置即可，一个简单的扩展配置只需要包含以下内容：
 ```c
 PHP_ARG_WITH(扩展名称, for mytest support,
@@ -289,8 +273,9 @@ PHP_ADD_INCLUDE(pthread, pthread_create, [], [
     AC_MSG_ERROR([not find pthread_create() in lib pthread])
 ])
 ```
-__(7)PHP_ADD_LIBRARY_WITH_PATH($LIBNAME, $XXX_DIR/$PHP_LIBDIR, XXX_SHARED_LIBADD):__ 添加链接库。
+__(7)AC_CHECK_FUNC(function, [action-if-found], [action-if-not-found]):__ 检查函数是否存在。
+__(8)PHP_ADD_LIBRARY_WITH_PATH($LIBNAME, $XXX_DIR/$PHP_LIBDIR, XXX_SHARED_LIBADD):__ 添加链接库。
 
-__(8)PHP_NEW_EXTENSION(extname, sources [, shared [, sapi_class [, extra-cflags [, cxx [, zend_ext]]]]]):__ 注册一个扩展，添加扩展源文件，确定此扩展是动态库还是静态库，每个扩展的config.m4中都需要通过这个宏完成扩展的编译配置。
+__(9)PHP_NEW_EXTENSION(extname, sources [, shared [, sapi_class [, extra-cflags [, cxx [, zend_ext]]]]]):__ 注册一个扩展，添加扩展源文件，确定此扩展是动态库还是静态库，每个扩展的config.m4中都需要通过这个宏完成扩展的编译配置。
 
 更多autoconf及PHP封装的宏大家可以在用到的时候再自行检索，同时ext目录下有大量的示例可供参考。
