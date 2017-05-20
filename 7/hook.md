@@ -89,6 +89,7 @@ void php_request_shutdown(void *dummy)
 ```
 从上面的执行顺序可以看出，request_shutdown_func、post_deactivate_func是先后执行的，此函数通过`ZEND_MODULE_POST_ZEND_DEACTIVATE_D()`宏定义，`ZEND_MODULE_POST_ZEND_DEACTIVATE_N()`获取函数地址：
 ```c
+#define ZEND_MINIT          ZEND_MODULE_STARTUP_N
 #define ZEND_MODULE_POST_ZEND_DEACTIVATE_N(module)  zm_post_zend_deactivate_##module
 ```
 ### 7.4.5 module_shutdown_func
@@ -109,5 +110,38 @@ PHP_MSHUTDOWN_FUNCTION(extension_name)
 
 如果扩展名称为mytest，则最终定义的扩展：
 ```c
+PHP_MINIT_FUNCTION(mytest)
+{
+	...
+}
 
+PHP_RINIT_FUNCTION(mytest)
+{
+	...
+}
+
+PHP_RSHUTDOWN_FUNCTION(mytest)
+{
+	...
+}
+
+PHP_MSHUTDOWN_FUNCTION(mytest)
+{
+	...
+}
+
+zend_module_entry mytest_module_entry = {
+    STANDARD_MODULE_HEADER,
+    "mytest",
+    NULL, //mytest_functions,
+    PHP_MINIT(mytest),
+    PHP_MSHUTDOWN(mytest),
+    PHP_RINIT(mytest),
+    PHP_RSHUTDOWN(mytest),
+    NULL, //PHP_MINFO(mytest),
+    "1.0.0",
+    STANDARD_MODULE_PROPERTIES
+};
+
+ZEND_GET_MODULE(mytest)
 ```
