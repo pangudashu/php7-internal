@@ -49,13 +49,14 @@
    * [6.1 什么是线程安全](6/ts.md)
    * [6.2 线程安全资源管理器](6/ts.md)
 * 第7章 扩展开发
-   * [7.1 扩展的构成及编译](7/extension_intro.md)
+   * 7.1 概述
+   * 7.2 扩展的实现原理
+   * [7.3 扩展的构成及编译](7/extension_intro.md)
       * <a href="7/extension_intro.md#711-扩展能做什么">7.1.1 扩展能做什么</a>
       * <a href="7/extension_intro.md#712-脚本工具">7.1.2 脚本工具</a>
       * <a href="7/extension_intro.md#713-编写扩展的基本步骤">7.1.3 编写扩展的基本步骤</a>
       * <a href="7/extension_intro.md#714-扩展的组成部分">7.1.4 扩展的组成部分</a>
       * <a href="7/extension_intro.md#715-configm4">7.1.5 config.m4</a>
-   * [7.2 扩展加载过程](7/extension_start.md)
    * 7.3 ini配置
    * 7.4 变量的操作
    * 7.5 函数的操作
