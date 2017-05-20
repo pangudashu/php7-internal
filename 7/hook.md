@@ -107,8 +107,8 @@ PHP_MSHUTDOWN_FUNCTION(extension_name)
 
 #define ZEND_MODULE_SHUTDOWN_N(module)      zm_shutdown_##module
 ```
-
-如果扩展名称为mytest，则最终定义的扩展：
+7.4.6 小节
+上面详细介绍了各个阶段定义的钩子函数的格式，使用gdb调试扩展时可以根据展开后实际的函数名称设置断点。这些钩子实际已经为扩展构造了一个整体的框架，通过这几个钩子扩展已经能实现很多功能了，后面我们介绍的很多内容都是在这几个函数中完成的，比如内部类的注册、常量注册、资源注册等。如果扩展名称为mytest，则最终定义的扩展：
 ```c
 PHP_MINIT_FUNCTION(mytest)
 {
@@ -145,3 +145,4 @@ zend_module_entry mytest_module_entry = {
 
 ZEND_GET_MODULE(mytest)
 ```
+
