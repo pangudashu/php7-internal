@@ -126,14 +126,14 @@ static const zend_ini_entry_def ini_entries[] = {
 > #include <stddef.h>   
 >
 > typedef struct{   
-> 	  int     id;   
->     char    *name;   
+> 	int     id;   
+>	char    *name;   
 > }my_struct;
 > 
 > int main(void)   
 > {    
->     printf("%d\n", (void*)offsetof(my_struct, name));   
->	  return 0;   
+>	printf("%d\n", (void*)offsetof(my_struct, name));   
+>	return 0;   
 > }
 >
 > 通过这个offset及结构体指针就可以读取这个成员：`(char*)my_sutct + offset`，等价于`my_sutct->name`。
