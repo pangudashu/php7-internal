@@ -78,6 +78,8 @@ STD_PHP_INI_ENTRY(name,default_value,modifiable,on_modify,property_name,struct_t
 * __struct_type:__ 映射结构的类型
 * __struct_ptr:__ 映射结构的变量地址，发现配置后会
 
+> 除了STD_PHP_INI_ENTRY()这个宏还有一个类似的宏`STD_PHP_INI_BOOLEAN()`，用法一致，差别在于后者会自动把配置添加到phpinfo()输出中。
+
 这个宏展开后生成一个`zend_ini_entry_def`结构：
 ```c
 typedef struct _zend_ini_entry_def {
