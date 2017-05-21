@@ -255,8 +255,7 @@ ZEND_TSRMLS_CACHE_DEFINE()
 ZEND_GET_MODULE(mytest)
 #endif
 ```
-### 7.5.3 小节
-本节我们主要介绍了线程安全的全局变量的使用以及如何将php.ini配置项解析到C语言变量中，使用时主要分为两步：
+本节主要介绍了如何将php.ini配置项解析到C语言变量中，总结下主要分为两步：
 * __定义解析规则：__ 通过PHP_INI_BEGIN()、PHP_INI_END()、STD_PHP_INI_ENTRY()配置
 * __执行规则映射：__ 由REGISTER_INI_ENTRIES()来完成，这个操作之后解析目的变量就可以使用了
 
