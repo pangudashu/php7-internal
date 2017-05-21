@@ -72,8 +72,8 @@ STD_PHP_INI_ENTRY(name,default_value,modifiable,on_modify,property_name,struct_t
 ```
 * __name:__ php.ini中的配置标识符
 * __default_value:__ 默认值，注意不管转化后是什么类型，这里必须设置为字符串
-* __modifiable:__
-* __on_modify:__ 函数指针，用于指定发现这个配置后赋值处理的函数，默认提供了5个：OnUpdateBool、OnUpdateLong、OnUpdateLongGEZero、OnUpdateReal、OnUpdateString、OnUpdateStringUnempty，如果满足不了需求可以自定义
+* __modifiable:__ 可修改等级，ZEND_INI_USER为可以在php脚本中修改，ZEND_INI_SYSTEM为可以在php.ini中修改，还有一个ZEND_INI_PERDIR，ZEND_INI_ALL表示三种都可以，通常情况下设置为ZEND_INI_ALL、ZEND_INI_SYSTEM即可
+* __on_modify:__ 函数指针，用于指定发现这个配置后赋值处理的函数，默认提供了5个：OnUpdateBool、OnUpdateLong、OnUpdateLongGEZero、OnUpdateReal、OnUpdateString、OnUpdateStringUnempty，支持可以自定义
 * __property_name:__ 要映射到的结构struct_type中的成员
 * __struct_type:__ 映射结构的类型
 * __struct_ptr:__ 映射结构的变量地址，发现配置后会
@@ -186,3 +186,66 @@ ZEND_API ZEND_INI_MH(OnUpdateLong)
 	return SUCCESS;
 }
 ```
+如果PHP提供的几个on_modify不能满足需求可以自定义on_modify函数，举个例子：将php.ini中的配置`mytest.class`插入MYTESY_G(class_table)哈希表，则可以在扩展中定义这样一个on_modify：`ZEND_INI_MH(OnUpdateAddArray)`，将php.ini映射到全局变量的完整代码：
+```c
+//php_mytest.h
+#define MYTEST_G(v) ZEND_MODULE_GLOBALS_ACCESSOR(mytest, v)
+
+ZEND_BEGIN_MODULE_GLOBALS(mytest)
+	zend_long   open_cache;
+	HashTable   class_table;
+ZEND_END_MODULE_GLOBALS(mytest)
+
+//自定义on_modify函数
+ZEND_API ZEND_INI_MH(OnUpdateAddArray);
+```
+```
+//mytest.c
+ZEND_DECLARE_MODULE_GLOBALS(mytest)
+
+PHP_INI_BEGIN()
+    STD_PHP_INI_ENTRY("mytest.open_cache", "109", PHP_INI_ALL, OnUpdateLong, open_cache, zend_mytest_globals, mytest_globals)
+    STD_PHP_INI_ENTRY("mytest.class", "stdClass", PHP_INI_ALL, OnUpdateAddArray, class_table, zend_mytest_globals, mytest_globals)
+PHP_INI_END();
+
+ZEND_API ZEND_INI_MH(OnUpdateAddArray)
+{
+	HashTable   *ht;
+	zval    val;
+#ifndef ZTS
+	char *base = (char *) mh_arg2;
+#else
+	char *base;
+	base = (char *) ts_resource(*((int *) mh_arg2));
+#endif
+
+	ht = (HashTable*)(base+(size_t) mh_arg1);
+	ZVAL_NULL(&val);
+	zend_hash_add(ht, new_value, &val);
+}
+
+PHP_MINIT_FUNCTION(mytest)
+{   
+    zend_hash_init(&MYTEST_G(class_table), 0, NULL, NULL, 1);
+	//将php.ini解析到指定结构体 
+    REGISTER_INI_ENTRIES();
+
+    printf("open_cache %d\n", MYTEST_G(open_cache));
+}
+
+zend_module_entry mytest_module_entry = {
+    STANDARD_MODULE_HEADER,
+    "mytest",
+    NULL,//mytest_functions,
+    PHP_MINIT(mytest),
+    NULL,//PHP_MSHUTDOWN(mytest),
+    NULL,//PHP_RINIT(mytest),
+    NULL,//PHP_RSHUTDOWN(mytest),
+    NULL,//PHP_MINFO(mytest),
+    "1.0.0",
+    STANDARD_MODULE_PROPERTIES
+};
+
+ZEND_GET_MODULE(mytest)
+```
+
