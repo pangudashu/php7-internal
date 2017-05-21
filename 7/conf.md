@@ -34,7 +34,7 @@ zend_mytest_globals mytest_globals;
 看起来是不是跟EG、CG的定义非常像？这个宏展开后：
 ```c
 //ZTS
-#define MYTEST_G(v) ZEND_TSRMG(mytest_globals_id, zend_##module_name##_globals *, v)
+#define MYTEST_G(v) ZEND_TSRMG(mytest_globals_id, zend_mytest_globals *, v)
 
 //非ZTS
 #define MYTEST_G(v) (mytest_globals.v)
