@@ -100,9 +100,7 @@ PHP_INI_BEGIN()
 	STD_PHP_INI_ENTRY("mytest.open_cache", "109", PHP_INI_ALL, OnUpdateLong, open_cache, zend_mytest_globals, mytest_globals)
 PHP_INI_END();
 ```
-property_name设置的是要映射到的结构成员`mytest_globals->open_cache`，zend_mytest_globals、mytest_globals都是宏展开后的实际值，前者是结构体类型，后者是具体分配的变量，
-
-上面的定义展开后：
+property_name设置的是要映射到的结构成员`mytest_globals->open_cache`，zend_mytest_globals、mytest_globals都是宏展开后的实际值，前者是结构体类型，后者是具体分配的变量，上面的定义展开后：
 ```c
 static const zend_ini_entry_def ini_entries[] = {
 	{
@@ -138,4 +136,53 @@ static const zend_ini_entry_def ini_entries[] = {
 >
 > 通过这个offset及结构体指针就可以读取这个成员：`(char*)my_sutct + offset`，等价于`my_sutct->name`。
 
+定义完上面的配置映射规则后就可以进行映射了，这一步通过`REGISTER_INI_ENTRIES()`完成，这个宏展开后：`zend_register_ini_entries(ini_entries, module_number)`，ini_entries是`PHP_INI_BEGIN/END()`两个宏生成的配置映射规则数组，通常会把这个操作放到`PHP_MINIT_FUNCTION()`中，注意：此时php.ini已经解析到`configuration_hash`哈希表中，`zend_register_ini_entries()`将根据配置name查找这个哈希表，如果找到了表明用户在php.ini中配置了该项，然后将调用此规则指定的on_modify函数进行赋值，比如上面的示例将调用`OnUpdateLong()`处理，整体的流程：
+```c
+ZEND_API int zend_register_ini_entries(const zend_ini_entry_def *ini_entry, int module_number)
+{
+	zend_ini_entry *p;
+	zval *default_value;
+	HashTable *directives = registered_zend_ini_directives;
+	
+	while (ini_entry->name) {
+		//分配zend_ini_entry结构
+		p = pemalloc(sizeof(zend_ini_entry), 1);
+		//zend_ini_entry初始化
+		...
 
+		//添加到registered_zend_ini_directives，EG(ini_directives)也是指向此HashTable
+		if (zend_hash_add_ptr(directives, p->name, (void*)p) == NULL) {
+			...
+		}
+
+		//zend_get_configuration_directive()最终将调用cfg_get_entry()
+		//从configuration_hash哈希表中查找配置，如果没有找到将使用默认值
+		default_value = zend_get_configuration_directive(p->name)
+		...
+		if (p->on_modify) {
+			//调用定义的赋值handler处理
+			p->on_modify(p, p->value, p->mh_arg1, p->mh_arg2, p->mh_arg3, ZEND_INI_STAGE_STARTUP);
+		}
+	}
+}
+```
+`OnUpdateLong()`赋值处理:
+```c
+ZEND_API ZEND_INI_MH(OnUpdateLong)
+{
+	zend_long *p;
+#ifndef ZTS
+	//存储结构的指针
+	char *base = (char *) mh_arg2;
+#else
+	char *base;
+	//ZTS下需要向TSRM中获取存储结构的指针
+	base = (char *) ts_resource(*((int *) mh_arg2));
+#endif
+	//指向结构体成员的位置
+	p = (zend_long *) (base+(size_t) mh_arg1);
+	//将值转为zend_long
+	*p = zend_atol(ZSTR_VAL(new_value), (int)ZSTR_LEN(new_value));
+	return SUCCESS;
+}
+```
