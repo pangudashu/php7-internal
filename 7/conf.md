@@ -199,7 +199,7 @@ ZEND_END_MODULE_GLOBALS(mytest)
 //自定义on_modify函数
 ZEND_API ZEND_INI_MH(OnUpdateAddArray);
 ```
-```
+```c
 //mytest.c
 ZEND_DECLARE_MODULE_GLOBALS(mytest)
 
@@ -246,6 +246,11 @@ zend_module_entry mytest_module_entry = {
     STANDARD_MODULE_PROPERTIES
 };
 
+#ifdef COMPILE_DL_TIMEOUT
+#ifdef ZTS
+ZEND_TSRMLS_CACHE_DEFINE()
+#endif
 ZEND_GET_MODULE(mytest)
+#endif
 ```
 
