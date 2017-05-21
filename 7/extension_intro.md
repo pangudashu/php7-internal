@@ -69,7 +69,7 @@ ZEND_GET_MODULE(mytest)
 ```
 编译、安装后执行`php -m`就可以看到my_test这个扩展了。
 
-### 7.3.2 脚本工具
+### 7.3.2 编译工具
 PHP提供了几个脚本工具用于简化扩展的实现：ext_skel、phpize、php-config，后面两个脚本主要配合autoconf、automake生成Makefile。在介绍这几个工具之前，我们先看下PHP安装后的目录结构，因为很多脚本、配置都放置在安装后的目录中，比如PHP的安装路径为：/usr/local/php7，则此目录的主要结构：
 ```c
 |---php7
