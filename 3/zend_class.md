@@ -88,6 +88,8 @@ struct _zend_class_entry {
     } info;
 }
 ```
+> create_object为实例化对象的操作，可以通过扩展自定义这个函数
+
 举个例子具体看下，定义一个User类，它继承了Human类，User类中有一个常量、一个静态属性、两个普通属性：
 ```php
 //父类

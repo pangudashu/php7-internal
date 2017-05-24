@@ -10,7 +10,7 @@ struct _zend_object {
     zend_refcounted_h gc; //引用计数
     uint32_t          handle;
     zend_class_entry *ce; //所属类
-    const zend_object_handlers *handlers; //对象的一些操作接口
+    const zend_object_handlers *handlers; //对象操作处理函数
     HashTable        *properties;
     zval              properties_table[1]; //普通属性值数组
 };
@@ -67,6 +67,10 @@ ZEND_API zend_object_handlers std_object_handlers = {
     NULL,                                   /* compare */
 }
 ```
+> __Note:__ 这些handler用于操作对象(如：设置、读取属性)，std_object_handlers是PHP定义的默认、标准的处理函数，在扩展中可以自定义handler，比如：重定义write_property，这样设置一个对象的属性时将调用扩展自己定义的处理函数，让扩展拥有了更高的控制权限。
+>
+> 需要注意的是：const zend_object_handlers *handlers，这里的handlers指针加了const修饰符，const修饰的是handlers**指向的对象**，而不是handlers指针本身，所以扩展中可以将一个对象的handlers修改为另一个zend_object_handlers指针，但无法修改zend_object_handlers中的值，比如：`obj->handlers->write_property = xxx`将报错，而：`obj->handlers = xxx`则是可以的。
+
 __(4)properties:__ 普通成员属性哈希表，对象创建之初这个值为NULL，主要是在动态定义属性时会用到，与properties_table有一定关系，下一节我们将单独说明，这里暂时忽略。
 
 __(5)properties_table:__ 成员属性数组，还记得我们在介绍类一节时提过非静态属性存储在对象结构中吗？就是这个properties_table！注意，它是一个数组，`zend_object`是个变长结构体，分配时会根据非静态属性的数量确定其大小。
