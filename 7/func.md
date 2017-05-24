@@ -118,11 +118,21 @@ PHP_FUNCTION(my_func_1)
 ```
 对应的内存关系：
 
-![](../img/interal_func_param.png)
+![](../img/internal_func_param.png)
 
+注意：解析时除了整形、浮点型、布尔型和NULL是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，内部函数要用只能从zend_execute_data上取。接下来详细介绍下`zend_parse_parameters()`不同类型的解析用法。
 
+(1)整形、浮点型、布尔型、NULL
 
-内部函数与用户自定义函数的参数均分配在zend_execute_data上。
+(2)数组
+
+(3)对象
+
+(4)资源
+
+(5)字符串
+
+(6)其它标识符
 
 #### 7.6.1.3 函数返回值
 
