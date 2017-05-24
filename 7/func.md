@@ -95,6 +95,34 @@ Hello, I'm my_func_2
 大功告成，函数已经能够正常工作了，后续的工作就是不断完善handler实现扩展自己的功能了。
 
 #### 7.6.1.2 函数参数
+上面我们定义的函数没有接收任何参数，那么扩展定义的内部函数如何读取参数呢？首先回顾下函数参数的实现：用户自定义函数在编译时会为每个参数创建一个`zend_arg_info`结构，这个结构用来记录参数的名称、是否引用传参、是否为可变参数等，在存储上函数参数与局部变量相同，都分配在zend_execute_data上，且最先分配的就是函数参数，调用函数时首先会进行参数传递，按参数次序依次将参数的value从调用空间传递到被调函数的zend_execute_data，函数内部像访问普通局部变量一样通过存储位置访问参数，这是用户自定义函数的参数实现。
+
+内部函数与用户自定义函数最大的不同在于内部函数就是一个普通的C函数，除函数参数以外在zend_execute_data上没有其他变量的分配，函数参数是从PHP用户空间传到函数的，它们与用户自定义函数完全相同，包括参数的分配方式、传参过程，也是按照参数次序依次分配在zend_execute_data上，所以在扩展中定义的函数直接按照顺序从zend_execute_data上读取对应的值即可，PHP中通过`zend_parse_parameters()`这个函数解析zend_execute_data上保存的参数：
+```c
+zend_parse_parameters(int num_args, const char *type_spec, ...);
+```
+num_args为实际传参数，通过`ZEND_NUM_ARGS()`获取；type_spec是一个字符串，用来标识解析参数的类型，比如:"la"表示第一个参数为整形，第二个为数组，将按照这个解析到指定变量；后面是一个可变参数，用来指定解析到的变量，这个值与type_spec配合使用，即type_spec用来指定解析的变量类型，可变参数用来指定要解析到的变量，这个值必须是指针。
+
+解析的过程也比较容易理解，因为传给函数的参数已经保存到zend_execute_data上了，所以解析的过程就是按照type_spec指定的各个类型，依次从zend_execute_data上获取参数的value，然后保存到解析到的地址上，比如：
+```c
+PHP_FUNCTION(my_func_1)
+{
+    zend_long   lval;
+    zval        *arr;
+    
+    if(zend_parse_parameters(ZEND_NUM_ARGS(), "la", &lval, &arr) == FAILURE){
+        RETURN_FALSE;
+    }
+    ...
+}
+```
+对应的内存关系：
+
+![](../img/interal_func_param.png)
+
+
+
+内部函数与用户自定义函数的参数均分配在zend_execute_data上。
 
 #### 7.6.1.3 函数返回值
 
