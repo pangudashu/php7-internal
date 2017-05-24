@@ -85,7 +85,7 @@ function my_function(){
     return $ret;
 }
 ```
-另外参数还有其它的信息，比如默认值、引用传递，这些信息通过`zend_arg_info`结构记录：
+另外参数还有其它的信息，这些信息通过`zend_arg_info`结构记录：
 ```c
 typedef struct _zend_arg_info {
     zend_string *name; //参数名
@@ -225,7 +225,9 @@ $c = 345; //编译到zend_op_array_1
 >> __操作2：__ 每个参数生成一条opcode，如果是可变参数其opcode=ZEND_RECV_VARIADIC，如果有默认值则为ZEND_RECV_INIT，否则为ZEND_RECV
 
 > 上面的例子中$a编号为96，$b为112，同时生成了两条opcode：ZEND_RECV、ZEND_RECV_INIT，调用的时候会根据具体传参数量跳过部分opcode，比如这个函数我们这么调用`my_function($a)`则ZEND_RECV这条opcode就直接跳过了，然后执行ZEND_RECV_INIT将默认值写到112位置，具体的编译过程在`zend_compile_params()`中，上面已经介绍过。
-
+>
+> 参数默认值的保存与普通变量赋值相同：`$a = array()`，`array()`保存在literals，参数的默认值也是如此。
+>
 > __(3)__ 编译函数内部语法，这个跟普通PHP代码编译过程无异。
 
 > __(4)__ pass_two()，上一篇介绍过，不再赘述。
