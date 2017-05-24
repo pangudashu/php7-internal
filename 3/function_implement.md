@@ -96,7 +96,7 @@ typedef struct _zend_arg_info {
     zend_bool is_variadic; //是否为可变参数，即...用法，与golang的用法相同，5.6以上新增的一个用法
 } zend_arg_info;
 ```
-每个参数都有一个上面的结构，所有参数的结构保存在`zend_op_array.arg_info`数组中，这里有一个地方需要注意：`zend_op_array->arg_info`数组保存的并不全是输入参数，如果函数声明了返回值类型则也会为它创建一个`zend_arg_info`，这个结构在arg_info数组的第一个位置，这种情况下`zend_op_array->arg_info`指向的实际是数组的第二个位置，返回值的结构通过`zend_op_array->arg_info[-1]`读取，编译时的处理具体如下。
+每个参数都有一个上面的结构，所有参数的结构保存在`zend_op_array.arg_info`数组中，这里有一个地方需要注意：`zend_op_array->arg_info`数组保存的并不全是输入参数，如果函数声明了返回值类型则也会为它创建一个`zend_arg_info`，这个结构在arg_info数组的第一个位置，这种情况下`zend_op_array->arg_info`指向的实际是数组的第二个位置，返回值的结构通过`zend_op_array->arg_info[-1]`读取，这里先单独看下编译时的处理：
 ```c
 //函数参数的编译
 void zend_compile_params(zend_ast *ast, zend_ast *return_type_ast)
@@ -224,7 +224,7 @@ $c = 345; //编译到zend_op_array_1
 
 >> __操作2：__ 每个参数生成一条opcode，如果是可变参数其opcode=ZEND_RECV_VARIADIC，如果有默认值则为ZEND_RECV_INIT，否则为ZEND_RECV
 
-> 上面的例子中$a编号为96，$b为112，同时生成了两条opcode：ZEND_RECV、ZEND_RECV_INIT，调用的时候会根据具体传参数量跳过部分opcode，比如这个函数我们这么调用`my_function($a)`则ZEND_RECV这条opcode就直接跳过了，然后执行ZEND_RECV_INIT将默认值写到112位置，具体的编译过程在`zend_compile_params()`中，这里不再展开。
+> 上面的例子中$a编号为96，$b为112，同时生成了两条opcode：ZEND_RECV、ZEND_RECV_INIT，调用的时候会根据具体传参数量跳过部分opcode，比如这个函数我们这么调用`my_function($a)`则ZEND_RECV这条opcode就直接跳过了，然后执行ZEND_RECV_INIT将默认值写到112位置，具体的编译过程在`zend_compile_params()`中，上面已经介绍过。
 
 > __(3)__ 编译函数内部语法，这个跟普通PHP代码编译过程无异。
 
