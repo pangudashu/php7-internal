@@ -88,8 +88,19 @@ struct _zend_class_entry {
     } info;
 }
 ```
-> create_object为实例化对象的操作，可以通过扩展自定义这个函数
+create_object为实例化对象的操作，可以通过扩展自定义一个函数来接管实例化对象的操作，没有定义这个函数的话将由默认的`zend_objects_new()`处理，自定义时可以参考这个函数的实现：
+```c
+//注意：此操作并没有将属性拷贝到zend_object中：由object_properties_init()完成
+ZEND_API zend_object *zend_objects_new(zend_class_entry *ce)
+{
+    zend_object *object = emalloc(sizeof(zend_object) + zend_object_properties_size(ce));
 
+    zend_object_std_init(object, ce);
+    //设置对象操作的handler
+    object->handlers = &std_object_handlers;
+    return object;
+}
+```
 举个例子具体看下，定义一个User类，它继承了Human类，User类中有一个常量、一个静态属性、两个普通属性：
 ```php
 //父类
