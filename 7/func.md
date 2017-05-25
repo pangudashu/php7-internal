@@ -275,12 +275,49 @@ break;
 >
 > 2、"h"与"H"当传参为数组时同样没有差别，当传参为对象时，"H"将把对象的成员参数数组解析到目标变量，"h"将报错
 
-__(3)对象__
+__(6)对象：o、O__
 
-__(4)资源__
+如果参数是一个对象则可以通过"o"、"O"将其解析到目标变量，注意：只能解析为zval*，无法解析为zend_object*。
+```c
+zval    *obj;
 
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "o", &obj) == FAILURE){
+    ...
+}
+```
+"O"是要求解析指定类或其子类的对象，类似传参时显式的声明了参数类型的用法：`function my_func(MyClass $obj){...}`，如果参数不是指定类的实例化对象则无法解析。
 
-__(6)其它标识符__
+"o!"、"O!"与字符串用法相同。
+
+__(7)资源：r__
+
+如果参数为资源则可以通过"r"获取其zval的地址，但是无法直接解析到zend_resource的地址，与对象相同。
+```c
+zval    *res;
+
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "r", &res) == FAILURE){
+    ...
+}
+```
+"r!"与字符串用法相同。
+
+__(8)类：C__
+
+如果参数是一个类则可以通过"C"解析出zend_class_entry地址：`function my_func(stdClass){...}`，这里有个地方比较特殊，解析到的变量可以设定为一个类，这种情况下解析时将会找到的类与指定的类之间的父子关系，只有存在父子关系才能解析，如果只是想根据参数获取类型的zend_class_entry地址，记得将解析到的地址初始化为NULL，否则将会不可预料的错误。
+```c
+zend_class_entry    *ce = NULL; //初始为NULL
+
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "C", &ce) == FAILURE){
+    RETURN_FALSE;
+}
+```
+__(9)通用解析：z__
+
+"z"表示按参数实际类型解析，比如参数为字符串就解析为字符串，参数为数组就解析为数组，这种实际就是将zend_execute_data上的参数地址拷贝到目的变量了，没有做任何转化。
+
+"z!"与字符串用法相同。
+
+__(10)其它标识符__
 
 #### 7.6.1.3 函数返回值
 
