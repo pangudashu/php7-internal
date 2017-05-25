@@ -94,7 +94,7 @@ Hello, I'm my_func_2
 ```
 大功告成，函数已经能够正常工作了，后续的工作就是不断完善handler实现扩展自己的功能了。
 
-#### 7.6.1.2 函数参数
+#### 7.6.1.2 函数参数解析
 上面我们定义的函数没有接收任何参数，那么扩展定义的内部函数如何读取参数呢？首先回顾下函数参数的实现：用户自定义函数在编译时会为每个参数创建一个`zend_arg_info`结构，这个结构用来记录参数的名称、是否引用传参、是否为可变参数等，在存储上函数参数与局部变量相同，都分配在zend_execute_data上，且最先分配的就是函数参数，调用函数时首先会进行参数传递，按参数次序依次将参数的value从调用空间传递到被调函数的zend_execute_data，函数内部像访问普通局部变量一样通过存储位置访问参数，这是用户自定义函数的参数实现。
 
 内部函数与用户自定义函数最大的不同在于内部函数就是一个普通的C函数，除函数参数以外在zend_execute_data上没有其他变量的分配，函数参数是从PHP用户空间传到函数的，它们与用户自定义函数完全相同，包括参数的分配方式、传参过程，也是按照参数次序依次分配在zend_execute_data上，所以在扩展中定义的函数直接按照顺序从zend_execute_data上读取对应的值即可，PHP中通过`zend_parse_parameters()`这个函数解析zend_execute_data上保存的参数：
@@ -122,17 +122,165 @@ PHP_FUNCTION(my_func_1)
 
 注意：解析时除了整形、浮点型、布尔型和NULL是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，内部函数要用只能从zend_execute_data上取。接下来详细介绍下`zend_parse_parameters()`不同类型的解析用法。
 
-(1)整形、浮点型、布尔型、NULL
+__(1)整形：l、L__
 
-(2)数组
+整形通过"l"、"L"标识，表示解析的参数为整形，解析到的变量类型必须是`zend_long`，不能解析其它类型，如果输入的参数不是整形将按照类型转换规则将其转为整形：
+```c
+zend_long   lval;
 
-(3)对象
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "l", &lval){
+    ...
+}
+printf("lval:%d\n", lval);
+```
+如果在标识符后加"!"，即："l!"、"L!"，则必须再提供一个zend_bool变量的地址，通过这个值可以判断传入的参数是否为NULL，如果为NULL则将要解析到的zend_long值设置为0，同时zend_bool设置为1：
+```c
+zend_long   lval; //如果参数为NULL则此值被设为0
+zend_bool   is_null; //如果参数为NULL则此值为1，否则为0
 
-(4)资源
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "l!", &lval, &is_null){
+    ...
+}
+```
+具体的解析过程：
+```c
+//zend_API.c #line:519
+case 'l':
+case 'L':
+{
+    //这里获取解析到的变量地址取的是zend_long *，所以只能解析到zend_long
+    zend_long *p = va_arg(*va, zend_long *);
+    zend_bool *is_null = NULL;
+    
+    //后面加"!"时check_null为1
+    if (check_null) {
+        is_null = va_arg(*va, zend_bool *);
+    }
 
-(5)字符串
+    if (!zend_parse_arg_long(arg, p, is_null, check_null, c == 'L')) {
+        return "integer";
+    }
+}
+```
+```c
+static zend_always_inline int zend_parse_arg_long(zval *arg, zend_long *dest, zend_bool *is_null, int check_null, int cap)
+{
+    if (check_null) {
+        *is_null = 0;
+    }
+    if (EXPECTED(Z_TYPE_P(arg) == IS_LONG)) {
+        //传参为整形，无需转化
+        *dest = Z_LVAL_P(arg);
+    } else if (check_null && Z_TYPE_P(arg) == IS_NULL) {
+        //传参为NULL
+        *is_null = 1;
+        *dest = 0;
+    } else if (cap) {
+        //"L"的情况
+        return zend_parse_arg_long_cap_slow(arg, dest);
+    } else {
+        //"l"的情况
+        return zend_parse_arg_long_slow(arg, dest);
+    }
+    return 1;
+}
+```
+> __Note:__ "l"与"L"的区别在于，当传参不是整形且转为整形后超过了整形的大小范围时，"L"将值调整为整形的最大或最小值，而"l"将报错，比如传的参数是字符串"9223372036854775808"，转整形后超过了unsigned int64的最大值：0xFFFFFFFFFFFFFFFF，"L"将解析为0xFFFFFFFFFFFFFFFF。
 
-(6)其它标识符
+__(2)布尔型：b__
+
+通过"b"标识符表示将传入的参数解析为布尔型，解析到的变量必须是zend_bool：
+```c
+zend_bool   ok;
+
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "b", &ok, &is_null) == FAILURE){
+    ...
+}
+```
+"b!"的用法与整形的完全相同，也必须再提供一个zend_bool的地址用于获取传参是否为NULL，如果为NULL，则zend_bool为0，用于获取是否NULL的zend_bool为1。
+
+__(3)浮点型：d__
+
+通过"d"标识符表示将参数解析为浮点型，解析的变量类型必须为double：
+```c
+double  dval;
+
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "d", &dval) == FAILURE){
+    ...
+}
+```
+具体解析过程不再展开，"d!"与整形、布尔型用法完全相同。
+
+__(4)字符串：s、S、p、P__
+
+字符串解析有两种形式：char*、zend_string，其中"s"将参数解析到`char*`，且需要额外提供一个size_t类型的变量用于获取字符串长度，"S"将解析到zend_string：
+```c
+char    *str;
+size_t  str_len;
+
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "s", &str, &str_len) == FAILURE){
+    ...
+}
+```
+```c
+zend_string    *str;
+
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "S", &str) == FAILURE){
+    ...
+}
+```
+"s!"、"S!"与整形、布尔型用法不同，字符串时不需要额外提供zend_bool的地址，如果参数为NULL，则char*、zend_string将设置为NULL。除了"s"、"S"之外还有两个类似的："p"、"P"，从解析规则来看主要用于解析路径，实际与普通字符串没什么区别，尚不清楚这俩有什么特殊用法。
+
+__(5)数组：a、A、h、H__
+
+数组的解析也有两类，一类是解析到zval层面，另一类是解析到HashTable，其中"a"、"A"解析到的变量必须是zval，"h"、"H"解析到HashTable，这两类是等价的：
+```c
+zval        *arr;   //必须是zval指针，不能是zval arr，因为参数保存在zend_execute_data上，arr为此空间上参数的地址
+HashTable   *ht;
+
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "ah", &arr, &ht) == FAILURE){
+    ...
+} 
+```
+具体解析过程：
+```c
+case 'A':
+case 'a':
+{
+    //解析到zval *
+    zval **p = va_arg(*va, zval **);
+
+    if (!zend_parse_arg_array(arg, p, check_null, c == 'A')) {
+        return "array";
+    }
+}
+break;
+
+case 'H':
+case 'h':
+{
+    //解析到HashTable *
+    HashTable **p = va_arg(*va, HashTable **);
+
+    if (!zend_parse_arg_array_ht(arg, p, check_null, c == 'H')) {
+        return "array";
+    }
+}
+break;
+```
+"a!"、"A!"、"h!"、"H!"的用法与字符串一致，也不需要额外提供别的地址，如果传参为NULL，则对应解析到的zval*、HashTable*也为NULL。
+> __Note:__ 
+>
+> 1、"a"与"A"当传参为数组时没有任何差别，它们的区别在于：如果传参为对象"A"将按照对象解析到zval，而"a"将报错
+>
+> 2、"h"与"H"当传参为数组时同样没有差别，当传参为对象时，"H"将把对象的成员参数数组解析到目标变量，"h"将报错
+
+__(3)对象__
+
+__(4)资源__
+
+
+__(6)其它标识符__
 
 #### 7.6.1.3 函数返回值
 
