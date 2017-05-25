@@ -311,13 +311,36 @@ if(zend_parse_parameters(ZEND_NUM_ARGS(), "C", &ce) == FAILURE){
     RETURN_FALSE;
 }
 ```
-__(9)通用解析：z__
+__(9)callable：f__
+
+callable指函数或成员方法，如果参数是函数名称字符串、array(对象/类,成员方法)，则可以通过"f"标识符解析出`zend_fcall_info`结构，这个结构是调用函数、成员方法时的唯一输入。
+```c
+zend_fcall_info         callable; //注意，这两个结构不能是指针
+zend_fcall_info_cache   call_cache;
+
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "f", &callable, &call_cache) == FAILURE){
+    RETURN_FALSE;
+}
+```
+函数调用：
+```php
+my_func_1("func_name");
+或
+my_func_1(array('class_name', 'static_method'));
+或
+my_func_1(array($object, 'method'));
+```
+解析出`zend_fcall_info`后就可以通过`zend_call_function()`调用函数、成员方法了，提供"f"解析到`zend_fcall_info`的用意是简化函数调用的操作，否则需要我们自己去查找函数、检查是否可被调用等工作，关于这个结构稍后介绍函数调用时再作详细说明。
+
+__(10)通用解析：z__
 
 "z"表示按参数实际类型解析，比如参数为字符串就解析为字符串，参数为数组就解析为数组，这种实际就是将zend_execute_data上的参数地址拷贝到目的变量了，没有做任何转化。
 
 "z!"与字符串用法相同。
 
-__(10)其它标识符__
+__(11)其它标识符__
+
+除了上面介绍的这些表示符，以外还有几个有特殊用法的标识符："|"、"+"、"*"，它们并不是用来表示数据类型的。
 
 #### 7.6.1.3 函数返回值
 
