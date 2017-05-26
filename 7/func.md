@@ -100,7 +100,9 @@ Hello, I'm my_func_2
 ```c
 zend_parse_parameters(int num_args, const char *type_spec, ...);
 ```
-num_args为实际传参数，通过`ZEND_NUM_ARGS()`获取；type_spec是一个字符串，用来标识解析参数的类型，比如:"la"表示第一个参数为整形，第二个为数组，将按照这个解析到指定变量；后面是一个可变参数，用来指定解析到的变量，这个值与type_spec配合使用，即type_spec用来指定解析的变量类型，可变参数用来指定要解析到的变量，这个值必须是指针。
+* num_args为实际传参数，通过`ZEND_NUM_ARGS()`获取：zend_execute_data->This.u2.num_args，前面曾介绍过`zend_execute_data->This`这个zval的用途；
+* type_spec是一个字符串，用来标识解析参数的类型，比如:"la"表示第一个参数为整形，第二个为数组，将按照这个解析到指定变量；
+* 后面是一个可变参数，用来指定解析到的变量，这个值与type_spec配合使用，即type_spec用来指定解析的变量类型，可变参数用来指定要解析到的变量，这个值必须是指针。
 
 解析的过程也比较容易理解，因为传给函数的参数已经保存到zend_execute_data上了，所以解析的过程就是按照type_spec指定的各个类型，依次从zend_execute_data上获取参数的value，然后保存到解析到的地址上，比如：
 ```c
