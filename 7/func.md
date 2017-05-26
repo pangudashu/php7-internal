@@ -1,9 +1,8 @@
 ## 7.6 函数
 
-### 7.6.1 内部函数
+### 7.6.1 内部函数注册
 通过扩展可以将C语言实现的函数提供给PHP脚本使用，如同大量PHP内置函数一样，这些函数统称为内部函数(internal function)，与PHP脚本中定义的用户函数不同，它们无需经历用户函数的编译过程，同时执行时也不像用户函数那样每一个指令都调用一次C语言编写的handler函数，因此，内部函数的执行效率更高。除了性能上的优势，内部函数还可以拥有更高的控制权限，可发挥的作用也更大，能够完成很多用户函数无法实现的功能。
 
-#### 7.6.1.1 内部函数的定义
 前面介绍PHP函数的编译时曾经详细介绍过PHP函数的实现，函数通过`zend_function`来表示，这是一个联合体，用户函数使用`zend_function.op_array`，内部函数使用`zend_function.internal_function`，两者具有相同的头部用来记录函数的基本信息。不管是用户函数还是内部函数，其最终都被注册到EG(function_table)中，函数被调用时根据函数名称向这个符号表中查找。从内部函数的注册、使用过程可以看出，其定义实际非常简单，我们只需要定义一个`zend_internal_function`结构，然后注册到EG(function_table)中即可，接下来再重新看下内部函数的结构：
 ```c
 typedef struct _zend_internal_function {
@@ -94,7 +93,7 @@ Hello, I'm my_func_2
 ```
 大功告成，函数已经能够正常工作了，后续的工作就是不断完善handler实现扩展自己的功能了。
 
-#### 7.6.1.2 函数参数解析
+### 7.6.2 函数参数解析
 上面我们定义的函数没有接收任何参数，那么扩展定义的内部函数如何读取参数呢？首先回顾下函数参数的实现：用户自定义函数在编译时会为每个参数创建一个`zend_arg_info`结构，这个结构用来记录参数的名称、是否引用传参、是否为可变参数等，在存储上函数参数与局部变量相同，都分配在zend_execute_data上，且最先分配的就是函数参数，调用函数时首先会进行参数传递，按参数次序依次将参数的value从调用空间传递到被调函数的zend_execute_data，函数内部像访问普通局部变量一样通过存储位置访问参数，这是用户自定义函数的参数实现。
 
 内部函数与用户自定义函数最大的不同在于内部函数就是一个普通的C函数，除函数参数以外在zend_execute_data上没有其他变量的分配，函数参数是从PHP用户空间传到函数的，它们与用户自定义函数完全相同，包括参数的分配方式、传参过程，也是按照参数次序依次分配在zend_execute_data上，所以在扩展中定义的函数直接按照顺序从zend_execute_data上读取对应的值即可，PHP中通过`zend_parse_parameters()`这个函数解析zend_execute_data上保存的参数：
@@ -122,8 +121,7 @@ PHP_FUNCTION(my_func_1)
 
 注意：解析时除了整形、浮点型、布尔型和NULL是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，内部函数要用只能从zend_execute_data上取。接下来详细介绍下`zend_parse_parameters()`不同类型的解析用法。
 
-__(1)整形：l、L__
-
+#### 7.6.2.1 整形：l、L
 整形通过"l"、"L"标识，表示解析的参数为整形，解析到的变量类型必须是`zend_long`，不能解析其它类型，如果输入的参数不是整形将按照类型转换规则将其转为整形：
 ```c
 zend_long   lval;
@@ -187,8 +185,7 @@ static zend_always_inline int zend_parse_arg_long(zval *arg, zend_long *dest, ze
 ```
 > __Note:__ "l"与"L"的区别在于，当传参不是整形且转为整形后超过了整形的大小范围时，"L"将值调整为整形的最大或最小值，而"l"将报错，比如传的参数是字符串"9223372036854775808"，转整形后超过了unsigned int64的最大值：0xFFFFFFFFFFFFFFFF，"L"将解析为0xFFFFFFFFFFFFFFFF。
 
-__(2)布尔型：b__
-
+#### 7.6.2.2 布尔型：b
 通过"b"标识符表示将传入的参数解析为布尔型，解析到的变量必须是zend_bool：
 ```c
 zend_bool   ok;
@@ -199,7 +196,7 @@ if(zend_parse_parameters(ZEND_NUM_ARGS(), "b", &ok, &is_null) == FAILURE){
 ```
 "b!"的用法与整形的完全相同，也必须再提供一个zend_bool的地址用于获取传参是否为NULL，如果为NULL，则zend_bool为0，用于获取是否NULL的zend_bool为1。
 
-__(3)浮点型：d__
+#### 7.6.2.3 浮点型：d
 
 通过"d"标识符表示将参数解析为浮点型，解析的变量类型必须为double：
 ```c
@@ -211,8 +208,7 @@ if(zend_parse_parameters(ZEND_NUM_ARGS(), "d", &dval) == FAILURE){
 ```
 具体解析过程不再展开，"d!"与整形、布尔型用法完全相同。
 
-__(4)字符串：s、S、p、P__
-
+#### 7.6.2.4 字符串：s、S、p、P
 字符串解析有两种形式：char*、zend_string，其中"s"将参数解析到`char*`，且需要额外提供一个size_t类型的变量用于获取字符串长度，"S"将解析到zend_string：
 ```c
 char    *str;
@@ -231,8 +227,7 @@ if(zend_parse_parameters(ZEND_NUM_ARGS(), "S", &str) == FAILURE){
 ```
 "s!"、"S!"与整形、布尔型用法不同，字符串时不需要额外提供zend_bool的地址，如果参数为NULL，则char*、zend_string将设置为NULL。除了"s"、"S"之外还有两个类似的："p"、"P"，从解析规则来看主要用于解析路径，实际与普通字符串没什么区别，尚不清楚这俩有什么特殊用法。
 
-__(5)数组：a、A、h、H__
-
+#### 7.6.2.5 数组：a、A、h、H
 数组的解析也有两类，一类是解析到zval层面，另一类是解析到HashTable，其中"a"、"A"解析到的变量必须是zval，"h"、"H"解析到HashTable，这两类是等价的：
 ```c
 zval        *arr;   //必须是zval指针，不能是zval arr，因为参数保存在zend_execute_data上，arr为此空间上参数的地址
@@ -275,8 +270,7 @@ break;
 >
 > 2、"h"与"H"当传参为数组时同样没有差别，当传参为对象时，"H"将把对象的成员参数数组解析到目标变量，"h"将报错
 
-__(6)对象：o、O__
-
+#### 7.6.2.6 对象：o、O
 如果参数是一个对象则可以通过"o"、"O"将其解析到目标变量，注意：只能解析为zval*，无法解析为zend_object*。
 ```c
 zval    *obj;
@@ -289,8 +283,7 @@ if(zend_parse_parameters(ZEND_NUM_ARGS(), "o", &obj) == FAILURE){
 
 "o!"、"O!"与字符串用法相同。
 
-__(7)资源：r__
-
+#### 7.6.2.7 资源：r
 如果参数为资源则可以通过"r"获取其zval的地址，但是无法直接解析到zend_resource的地址，与对象相同。
 ```c
 zval    *res;
@@ -301,8 +294,7 @@ if(zend_parse_parameters(ZEND_NUM_ARGS(), "r", &res) == FAILURE){
 ```
 "r!"与字符串用法相同。
 
-__(8)类：C__
-
+#### 7.6.2.8 类：C
 如果参数是一个类则可以通过"C"解析出zend_class_entry地址：`function my_func(stdClass){...}`，这里有个地方比较特殊，解析到的变量可以设定为一个类，这种情况下解析时将会找到的类与指定的类之间的父子关系，只有存在父子关系才能解析，如果只是想根据参数获取类型的zend_class_entry地址，记得将解析到的地址初始化为NULL，否则将会不可预料的错误。
 ```c
 zend_class_entry    *ce = NULL; //初始为NULL
@@ -311,8 +303,7 @@ if(zend_parse_parameters(ZEND_NUM_ARGS(), "C", &ce) == FAILURE){
     RETURN_FALSE;
 }
 ```
-__(9)callable：f__
-
+#### 7.6.2.9 callable：f
 callable指函数或成员方法，如果参数是函数名称字符串、array(对象/类,成员方法)，则可以通过"f"标识符解析出`zend_fcall_info`结构，这个结构是调用函数、成员方法时的唯一输入。
 ```c
 zend_fcall_info         callable; //注意，这两个结构不能是指针
@@ -332,18 +323,18 @@ my_func_1(array($object, 'method'));
 ```
 解析出`zend_fcall_info`后就可以通过`zend_call_function()`调用函数、成员方法了，提供"f"解析到`zend_fcall_info`的用意是简化函数调用的操作，否则需要我们自己去查找函数、检查是否可被调用等工作，关于这个结构稍后介绍函数调用时再作详细说明。
 
-__(10)通用解析：z__
-
+#### 7.6.2.10 通用解析：z
 "z"表示按参数实际类型解析，比如参数为字符串就解析为字符串，参数为数组就解析为数组，这种实际就是将zend_execute_data上的参数地址拷贝到目的变量了，没有做任何转化。
 
 "z!"与字符串用法相同。
 
-__(11)其它标识符__
-
+#### 7.6.2.11 其它标识符
 除了上面介绍的这些表示符，以外还有几个有特殊用法的标识符："|"、"+"、"*"，它们并不是用来表示数据类型的。
 
-#### 7.6.1.3 函数返回值
+### 7.6.3 引用传参
 
-### 7.6.2 调用用户函数
+### 7.6.4 函数返回值
+
+### 7.6.5 函数调用
 
 
