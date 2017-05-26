@@ -396,16 +396,28 @@ ZEND_END_ARG_INFO()
 //声明为可变参数
 #define ZEND_ARG_VARIADIC_INFO(pass_by_ref, name)                    { #name, NULL, 0, pass_by_ref, 0, 1 },
 ```
-
+举个例子来看：
+```php
+function my_func_1(&$a, Exception $c){
+    ...
+}
+```
+用内核实现则可以这么定义：
+```c
+ZEND_BEGIN_ARG_INFO_EX(arginfo_my_func_1, 0, 0, 1)
+    ZEND_ARG_INFO(1, a) //引用
+    ZEND_ARG_OBJ_INFO(0, b, Exception, 0) //注意：这里不要把字符串加""
+ZEND_END_ARG_INFO()
+```
 展开后：
 ```c
 static const zend_internal_arg_info name[] = { 
     { (const char*)(zend_uintptr_t)(2), NULL, 0, 0, 0, 0 },
-    { name, NULL, 0, 0, 0, 0 },
-    { id, NULL, 0, 1, 0, 0 },
+    { "a", NULL, 0, 0, 0, 0 },
+    { "b", "Exception", 8, 1, 0, 0 },
 }
 ```
-第一个数组元素用于记录必传参数的数量以及返回值是否为引用。定义完这个数组接下来就需要把这个数组告诉函数，`PHP_FE()`宏的第二个参数就是接收这个数组的：
+第一个数组元素用于记录必传参数的数量以及返回值是否为引用。定义完这个数组接下来就需要把这个数组告诉函数：
 ```c
 const zend_function_entry mytest_functions[] = {
     PHP_FE(my_func_1,   arginfo_my_func_1)
@@ -413,7 +425,32 @@ const zend_function_entry mytest_functions[] = {
     PHP_FE_END //末尾必须加这个
 };
 ```
+引用参数通过`zend_parse_parameters()`解析时只能使用"z"解析，不能再直接解析为zend_value了，否则引用将失效：
+```
+PHP_FUNCTION(my_func_1)
+{
+    zval    *lval; //必须为zval，定义为zend_long也能解析出，但不是引用
+    zval    *obj;
 
+    if(zend_parse_parameters(ZEND_NUM_ARGS(), "zo", &lval, &obj) == FAILURE){
+        RETURN_FALSE;
+    }
+
+    //lval的类型为IS_REFERENCE
+    zval *real_val = Z_REFVAL_P(lval); //获取实际引用的zval地址：&(lval.value->ref.val)
+    Z_LVAL_P(real_val) = 100; //设置实际引用的类型
+}
+```
+```php
+$a = 90;
+$b = new Exception;
+my_func_1($a, $b);
+
+echo $a;
+==========[output]===========
+100
+```
+> __Note:__ 参数数组与zend_parse_parameters()有很多功能重合，两者都会生效，对zend_internal_arg_info验证在zend_parse_parameters()之前，为避免混乱两者应该保持一致；另外，虽然内部函数的参数数组并不强制定义声明，但还是建议声明。
 
 ### 7.6.4 函数返回值
 
