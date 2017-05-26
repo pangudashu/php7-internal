@@ -25,9 +25,12 @@ typedef struct _zend_internal_function {
 ```
 Common elements就是与用户函数相同的头部，用来记录函数的基本信息：函数类型、参数信息、函数名等，handler是此内部函数的具体实现，PHP提供了一个宏用于此handler的定义：`PHP_FUNCTION(function_name)`或`ZEND_FUNCTION()`，展开后：
 ```c
-void (*handler)(zend_execute_data *execute_data, zval *return_value)
+void *zif_function_name(zend_execute_data *execute_data, zval *return_value)
+{
+    ...
+}
 ```
-也就是内部函数会得到两个参数：execute_data、return_value，execute_data不用再说了，return_value是函数的返回值，这两个值在扩展中会经常用到。
+PHP为函数名加了"zif_"前缀，gdb调试时记得加上这个前缀；另外内部函数定义了两个参数：execute_data、return_value，execute_data不用再说了，return_value是函数的返回值，这两个值在扩展中会经常用到。
 
 比如要在扩展中定义两个函数：my_func_1()、my_func_2()，首先是编写函数：
 ```c
@@ -65,12 +68,12 @@ const zend_function_entry mytest_functions[] = {
 #define ZEND_FENTRY(zend_name, name, arg_info, flags)   { #zend_name, name, arg_info, (uint32_t) (sizeof(arg_info)/sizeof(struct _zend_internal_arg_info)-1), flags },
 #define ZEND_FN(name) zif_##name
 ```
-内部函数的名称前加了`zif_`前缀，以防与内核中的函数冲突，所以如果想用gdb调试扩展定义的函数记得加上这个前缀。最后将`zend_module_entry.functions`设置为`timeout_functions`即可：
+最后将`zend_module_entry->functions`设置为`timeout_functions`即可：
 ```c
 zend_module_entry mytest_module_entry = {
     STANDARD_MODULE_HEADER,
     "mytest",
-    mytest_functions,
+    mytest_functions, //functions
     NULL, //PHP_MINIT(mytest),
     NULL, //PHP_MSHUTDOWN(mytest),
     NULL, //PHP_RINIT(mytest),
@@ -426,7 +429,7 @@ const zend_function_entry mytest_functions[] = {
 };
 ```
 引用参数通过`zend_parse_parameters()`解析时只能使用"z"解析，不能再直接解析为zend_value了，否则引用将失效：
-```
+```c
 PHP_FUNCTION(my_func_1)
 {
     zval    *lval; //必须为zval，定义为zend_long也能解析出，但不是引用
@@ -453,7 +456,95 @@ echo $a;
 > __Note:__ 参数数组与zend_parse_parameters()有很多功能重合，两者都会生效，对zend_internal_arg_info验证在zend_parse_parameters()之前，为避免混乱两者应该保持一致；另外，虽然内部函数的参数数组并不强制定义声明，但还是建议声明。
 
 ### 7.6.4 函数返回值
+调用内部函数时其返回值指针作为参数传入，这个参数为`zval *return_value`，如果函数有返回值直接设置此指针即可，需要特别注意的是设置返回值时需要增加其引用计数，举个例子来看：
+    ```c
+PHP_FUNCTION(my_func_1)
+{
+    zval    *arr;
 
+    if(zend_parse_parameters(ZEND_NUM_ARGS(), "a", &arr) == FAILURE){
+        RETURN_FALSE;
+    }
+
+    //增加引用计数
+    Z_ADDREF_P(arr);
+
+    //设置返回值为数组：
+    //return_value->u1.type = IS_ARRAY; 
+    //return_value->value->arr = arr->value->arr;
+    ZVAL_ARR(return_value, Z_ARR_P(arr));
+} 
+```
+此函数接收一个数组，然后直接返回该数组，相当于：
+```php
+function my_func_1($arr){
+    return $arr;
+}
+```
+调用该函数：
+```php
+$a = array();       //$a -> zend_array(refcount:1)
+$b = my_func_1($a); //传参后：参数arr -> zend_array(refcount:2)
+                    //然后函数内部赋给了返回值:$b,$a,arr -> zend_array(refcount:3)
+                    //函数return阶段释放了参数：$b,$a -> zend_array(refcount:2)
+var_dump($b);
+=============[output]===========
+array(0) {
+}
+```
+虽然可以直接设置return_value，但实际使用时并不建议这么做，因为PHP提供了很多专门用于设置返回值的宏，这些宏定义在`zend_API.h`中：
+```c
+//返回布尔型，b：IS_FALSE、IS_TRUE
+#define RETURN_BOOL(b)                  { RETVAL_BOOL(b); return; }
+
+//返回NULL
+#define RETURN_NULL()                   { RETVAL_NULL(); return;}
+
+//返回整形，l类型：zend_long
+#define RETURN_LONG(l)                  { RETVAL_LONG(l); return; }
+
+//返回浮点值，d类型：double
+#define RETURN_DOUBLE(d)                { RETVAL_DOUBLE(d); return; }
+
+//返回字符串，可返回内部字符串，s类型为：zend_string *
+#define RETURN_STR(s)                   { RETVAL_STR(s); return; }
+
+//返回内部字符串，这种变量将不会被回收，s类型为：zend_string *
+#define RETURN_INTERNED_STR(s)          { RETVAL_INTERNED_STR(s); return; }
+
+//返回普通字符串，非内部字符串，s类型为：zend_string *
+#define RETURN_NEW_STR(s)               { RETVAL_NEW_STR(s); return; }
+
+//拷贝字符串用于返回，这个会自己加引用计数，s类型为：zend_string *
+#define RETURN_STR_COPY(s)              { RETVAL_STR_COPY(s); return; }
+
+//返回char *类型的字符串，s类型为char *
+#define RETURN_STRING(s)                { RETVAL_STRING(s); return; }
+
+//返回char *类型的字符串，s类型为char *，l为字符串长度，类型为size_t
+#define RETURN_STRINGL(s, l)            { RETVAL_STRINGL(s, l); return; }
+
+//返回空字符串
+#define RETURN_EMPTY_STRING()           { RETVAL_EMPTY_STRING(); return; }
+
+//返回资源，r类型：zend_resource *
+#define RETURN_RES(r)                   { RETVAL_RES(r); return; }
+
+//返回数组，r类型：zend_array *
+#define RETURN_ARR(r)                   { RETVAL_ARR(r); return; }
+
+//返回对象，r类型：zend_object *
+#define RETURN_OBJ(r)                   { RETVAL_OBJ(r); return; }
+
+//返回zval
+#define RETURN_ZVAL(zv, copy, dtor)     { RETVAL_ZVAL(zv, copy, dtor); return; }
+
+//返回false
+#define RETURN_FALSE                    { RETVAL_FALSE; return; }
+
+//返回true
+#define RETURN_TRUE                     { RETVAL_TRUE; return; }
+```
 ### 7.6.5 函数调用
 
 
