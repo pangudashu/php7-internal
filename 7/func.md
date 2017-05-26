@@ -121,7 +121,7 @@ PHP_FUNCTION(my_func_1)
 
 ![](../img/internal_func_param.png)
 
-注意：解析时除了整形、浮点型、布尔型和NULL是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，内部函数要用只能从zend_execute_data上取。接下来详细介绍下`zend_parse_parameters()`不同类型的解析用法。
+注意：解析时除了整形、浮点型、布尔型是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，内部函数要用只能从zend_execute_data上取。接下来详细介绍下`zend_parse_parameters()`不同类型的解析方式。
 
 #### 7.6.2.1 整形：l、L
 整形通过"l"、"L"标识，表示解析的参数为整形，解析到的变量类型必须是`zend_long`，不能解析其它类型，如果输入的参数不是整形将按照类型转换规则将其转为整形：
@@ -311,16 +311,16 @@ callable指函数或成员方法，如果参数是函数名称字符串、array(
 zend_fcall_info         callable; //注意，这两个结构不能是指针
 zend_fcall_info_cache   call_cache;
 
-if(zend_parse_parameters(ZEND_NUM_ARGS(), "f", &callable, &call_cache) == FAILURE){
+if(zend_parse_parameters(
     RETURN_FALSE;
 }
 ```
 函数调用：
 ```php
 my_func_1("func_name");
-或
+//或
 my_func_1(array('class_name', 'static_method'));
-或
+//或
 my_func_1(array($object, 'method'));
 ```
 解析出`zend_fcall_info`后就可以通过`zend_call_function()`调用函数、成员方法了，提供"f"解析到`zend_fcall_info`的用意是简化函数调用的操作，否则需要我们自己去查找函数、检查是否可被调用等工作，关于这个结构稍后介绍函数调用时再作详细说明。
@@ -331,9 +331,89 @@ my_func_1(array($object, 'method'));
 "z!"与字符串用法相同。
 
 #### 7.6.2.11 其它标识符
-除了上面介绍的这些表示符，以外还有几个有特殊用法的标识符："|"、"+"、"*"，它们并不是用来表示数据类型的。
+除了上面介绍的这些解析符号以外，还有几个有特殊用法的标识符："|"、"+"、"*"，它们并不是用来表示某种数据类型的。
+* __|：__ 表示此后的参数为可选参数，可以不传，比如解析规则为："al|b"，则可以传2个或3个参数，如果是："alb"，则必须传3个，否则将报错；
+* __+/*：__ 用于可变参数，注意这里与PHP函数...的用法不太一样，PHP中可以把函数最后一个参数前加...，表示调用时可以传多个参数，这些参数都会插入...参数的数组中，"*/+"也表示这个参数是可变的，但内核中只能接收一个值，即使传了多个后面那些也解析不到，"*"、"+"的区别在于"*"表示可以不传可变参数，而"+"表示可变参数至少有一个。
 
 ### 7.6.3 引用传参
+上一节介绍了如何在内部函数中解析参数，这里还有一种情况没有讲到，那就是引用传参：
+```php
+$a = array();
+
+function my_func(&$a){
+    $a[] = 1;
+}
+```
+上面这个例子在函数中对$a的修改将反映到原变量上，那么这种用法如何在内部函数中实现呢？上一节介绍参数解析的过程中并没有提到用户函数中参数的zend_arg_info结构，内部函数中也有类似的一个结构用于函数注册时指定参数的一些信息：zend_internal_arg_info。
+```c
+typedef struct _zend_internal_arg_info {
+    const char *name;               //参数名
+    const char *class_name;         
+    zend_uchar type_hint;           //显式声明的类型
+    zend_uchar pass_by_reference;   //是否引用传参
+    zend_bool allow_null;           //是否允许参数为NULL，类似"!"的用法
+    zend_bool is_variadic;          //是否为可变参数
+} zend_internal_arg_info;
+```
+这个结构几乎与zend_arg_info完全一样，不同的地方只在于name、class_name的类型，zend_arg_info这两个成员的类型都是zend_string。如果函数需要使用引用类型的参数或返回引用就需要创建函数的参数数组，这个数组通过：`ZEND_BEGIN_ARG_INFO()或ZEND_BEGIN_ARG_INFO_EX()`、`ZEND_END_ARG_INFO()`宏定义：
+```c
+#define ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(name, return_reference, required_num_args, type, class_name, allow_null)
+#define ZEND_BEGIN_ARG_INFO_EX(name, _unused, return_reference, required_num_args)
+#define ZEND_BEGIN_ARG_INFO(name, _unused)
+```
+* __name:__ 参数数组名，注册函数`PHP_FE(function, arg_info)`会用到
+* ___unused:__ 保留值，暂时无用
+* __return_reference:__ 返回值是否为引用
+* __required_num_args:__ required参数数
+* __type:__ 返回值类型
+
+这两个宏需要与`ZEND_END_ARG_INFO()`配合使用：
+```c
+ZEND_BEGIN_ARG_INFO_EX(arginfo_my_func_1, 0, 0, 2)
+    ...
+ZEND_END_ARG_INFO()
+```
+接着就是在上面两个宏中间定义每一个参数的zend_internal_arg_info，PHP提供的宏有：
+```c
+//pass_by_ref表示是否引用传参，name为参数名称
+#define ZEND_ARG_INFO(pass_by_ref, name)                             { #name, NULL, 0, pass_by_ref, 0, 0 },
+
+//只声明此参数为引用传参
+#define ZEND_ARG_PASS_INFO(pass_by_ref)                              { NULL,  NULL, 0, pass_by_ref, 0, 0 },
+
+//显式声明此参数的类型为指定类的对象，等价于PHP中这样声明：MyClass $obj
+#define ZEND_ARG_OBJ_INFO(pass_by_ref, name, classname, allow_null)  { #name, #classname, IS_OBJECT, pass_by_ref, allow_null, 0 },
+
+//显式声明此参数类型为数组，等价于：array $arr
+#define ZEND_ARG_ARRAY_INFO(pass_by_ref, name, allow_null)           { #name, NULL, IS_ARRAY, pass_by_ref, allow_null, 0 },
+
+//显式声明为callable，将检查函数、成员方法是否可调
+#define ZEND_ARG_CALLABLE_INFO(pass_by_ref, name, allow_null)        { #name, NULL, IS_CALLABLE, pass_by_ref, allow_null, 0 },
+
+//通用宏，自定义各个字段
+#define ZEND_ARG_TYPE_INFO(pass_by_ref, name, type_hint, allow_null) { #name, NULL, type_hint, pass_by_ref, allow_null, 0 },
+
+//声明为可变参数
+#define ZEND_ARG_VARIADIC_INFO(pass_by_ref, name)                    { #name, NULL, 0, pass_by_ref, 0, 1 },
+```
+
+展开后：
+```c
+static const zend_internal_arg_info name[] = { 
+    { (const char*)(zend_uintptr_t)(2), NULL, 0, 0, 0, 0 },
+    { name, NULL, 0, 0, 0, 0 },
+    { id, NULL, 0, 1, 0, 0 },
+}
+```
+第一个数组元素用于记录必传参数的数量以及返回值是否为引用。定义完这个数组接下来就需要把这个数组告诉函数，`PHP_FE()`宏的第二个参数就是接收这个数组的：
+```c
+const zend_function_entry mytest_functions[] = {
+    PHP_FE(my_func_1,   arginfo_my_func_1)
+    PHP_FE(my_func_2,   NULL)
+    PHP_FE_END //末尾必须加这个
+};
+```
+
 
 ### 7.6.4 函数返回值
 
