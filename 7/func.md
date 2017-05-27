@@ -107,7 +107,7 @@ zend_parse_parameters(int num_args, const char *type_spec, ...);
 * type_spec是一个字符串，用来标识解析参数的类型，比如:"la"表示第一个参数为整形，第二个为数组，将按照这个解析到指定变量；
 * 后面是一个可变参数，用来指定解析到的变量，这个值与type_spec配合使用，即type_spec用来指定解析的变量类型，可变参数用来指定要解析到的变量，这个值必须是指针。
 
-解析的过程也比较容易理解，因为传给函数的参数已经保存到zend_execute_data上了，所以解析的过程就是按照type_spec指定的各个类型，依次从zend_execute_data上获取参数的value，然后保存到解析到的地址上，比如：
+i解析的过程也比较容易理解，调用函数时首先会把参数拷贝到调用函数的zend_execute_data上，所以解析的过程就是按照type_spec指定的各个类型，依次从zend_execute_data上获取参数，然后将参数地址赋给目标变量，比如下面这个例子：
 ```c
 PHP_FUNCTION(my_func_1)
 {
@@ -124,7 +124,49 @@ PHP_FUNCTION(my_func_1)
 
 ![](../img/internal_func_param.png)
 
-注意：解析时除了整形、浮点型、布尔型是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，内部函数要用只能从zend_execute_data上取。接下来详细介绍下`zend_parse_parameters()`不同类型的解析方式。
+注意：解析时除了整形、浮点型、布尔型是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`zval *arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，解析获取的是这些参数的地址。`zend_parse_parameters()`调用了`zend_parse_va_args()`进行处理，简单看下解析过程：
+```c
+//va就是定义的要解析到的各个变量的地址
+static int zend_parse_va_args(int num_args, const char *type_spec, va_list *va, int flags)
+{
+    const  char *spec_walk;
+    int min_num_args = -1; //最少参数数
+    int max_num_args = 0; //要解析的参数总数
+    int post_varargs = 0;
+    zval *arg;
+    int arg_count; //实际传参数
+    
+    //遍历type_spec计算出min_num_args、max_num_args
+    for (spec_walk = type_spec; *spec_walk; spec_walk++) {
+        ...
+    }
+    ...
+    //检查数目是否合法
+    if (num_args < min_num_args || (num_args > max_num_args && max_num_args >= 0)) {
+        ...
+    }
+    //获取实际传参数：zend_execute_data.This.u2.num_args
+    arg_count = ZEND_CALL_NUM_ARGS(EG(current_execute_data));
+    ...
+    i = 0;
+    //逐个解析参数
+    while (num_args-- > 0) {
+        ...
+        //获取第i个参数的zval地址：arg就是在zend_execute_data上分配的局部变量
+        arg = ZEND_CALL_ARG(EG(current_execute_data), i + 1);
+
+        //解析第i个参数
+        if (zend_parse_arg(i+1, arg, va, &type_spec, flags) == FAILURE) {
+            if (varargs && *varargs) {
+                *varargs = NULL;
+            }
+            return FAILURE;
+        }
+        i++;
+    }
+}
+```
+接下来详细看下不同类型的解析方式。
 
 #### 7.6.2.1 整形：l、L
 整形通过"l"、"L"标识，表示解析的参数为整形，解析到的变量类型必须是`zend_long`，不能解析其它类型，如果输入的参数不是整形将按照类型转换规则将其转为整形：
@@ -328,7 +370,7 @@ my_func_1(array($object, 'method'));
 ```
 解析出`zend_fcall_info`后就可以通过`zend_call_function()`调用函数、成员方法了，提供"f"解析到`zend_fcall_info`的用意是简化函数调用的操作，否则需要我们自己去查找函数、检查是否可被调用等工作，关于这个结构稍后介绍函数调用时再作详细说明。
 
-#### 7.6.2.10 通用解析：z
+#### 7.6.2.10 任意类型：z
 "z"表示按参数实际类型解析，比如参数为字符串就解析为字符串，参数为数组就解析为数组，这种实际就是将zend_execute_data上的参数地址拷贝到目的变量了，没有做任何转化。
 
 "z!"与字符串用法相同。
@@ -360,15 +402,13 @@ typedef struct _zend_internal_arg_info {
 ```
 这个结构几乎与zend_arg_info完全一样，不同的地方只在于name、class_name的类型，zend_arg_info这两个成员的类型都是zend_string。如果函数需要使用引用类型的参数或返回引用就需要创建函数的参数数组，这个数组通过：`ZEND_BEGIN_ARG_INFO()或ZEND_BEGIN_ARG_INFO_EX()`、`ZEND_END_ARG_INFO()`宏定义：
 ```c
-#define ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(name, return_reference, required_num_args, type, class_name, allow_null)
 #define ZEND_BEGIN_ARG_INFO_EX(name, _unused, return_reference, required_num_args)
 #define ZEND_BEGIN_ARG_INFO(name, _unused)
 ```
 * __name:__ 参数数组名，注册函数`PHP_FE(function, arg_info)`会用到
 * ___unused:__ 保留值，暂时无用
-* __return_reference:__ 返回值是否为引用
+* __return_reference:__ 返回值是否为引用，一般很少会用到
 * __required_num_args:__ required参数数
-* __type:__ 返回值类型
 
 这两个宏需要与`ZEND_END_ARG_INFO()`配合使用：
 ```c
@@ -415,6 +455,7 @@ ZEND_END_ARG_INFO()
 展开后：
 ```c
 static const zend_internal_arg_info name[] = { 
+    //多出来的这个是给返回值用的
     { (const char*)(zend_uintptr_t)(2), NULL, 0, 0, 0, 0 },
     { "a", NULL, 0, 0, 0, 0 },
     { "b", "Exception", 8, 1, 0, 0 },
@@ -546,5 +587,155 @@ array(0) {
 #define RETURN_TRUE                     { RETVAL_TRUE; return; }
 ```
 ### 7.6.5 函数调用
+实际应用中，扩展可能需要调用用户自定义的函数或者其他扩展定义的内部函数，前面章节已经介绍过函数的执行过程，这里不再重复，本节只介绍下PHP提供的函数调用API的使用:
+```c
+ZEND_API int call_user_function(HashTable *function_table, zval *object, zval *function_name, zval *retval_ptr, uint32_t param_count, zval params[]);
+```
+各参数的含义：
+* __function_table:__ 函数符号表，普通函数是EG(function_table)，如果是成员方法则是zend_class_entry.function_table
+* __object:__ 调用成员方法时的对象
+* __function_name:__ 调用的函数名称
+* __retval_ptr:__ 函数返回值地址
+* __param_count:__ 参数数量
+* __params:__ 参数数组
 
+从接口的定义看其使用还是很简单的，不需要我们关心执行过程中各阶段复杂的操作。下面从一个具体的例子看下其使用：
+
+（1）在PHP中定义了一个普通的函数，将参数$i加上100后返回：
+```php
+function mySum($i){
+    return $i+100;
+}
+```
+（2）接下来在扩展中调用这个函数：
+```c
+PHP_FUNCTION(my_func_1)
+{   
+    zend_long   i;
+    zval        call_func_name, call_func_ret, call_func_params[1];
+    uint32_t    call_func_param_cnt = 1;
+    zend_string *call_func_str;
+    char        *func_name = "mySum";
+
+    if(zend_parse_parameters(ZEND_NUM_ARGS(), "l", &i) == FAILURE){
+        RETURN_FALSE;
+    }
+
+    //分配zend_string:调用完需要释放
+    call_func_str = zend_string_init(func_name, strlen(func_name), 0);
+    //设置到zval
+    ZVAL_STR(&call_func_name, call_func_str);
+    
+    //设置参数
+    ZVAL_LONG(&call_func_params[0], i);
+
+    //call
+    if(SUCCESS != call_user_function(EG(function_table), NULL, &call_func_name, &call_func_ret, call_func_param_cnt, call_func_params)){
+        zend_string_release(call_func_str);
+        RETURN_FALSE;
+    }   
+    zend_string_release(call_func_str);
+    RETURN_LONG(Z_LVAL(call_func_ret));
+}
+```
+（3）最后调用这个内部函数：
+```php
+function mySum($i){
+    return $i+100;
+}
+
+echo my_func_1(60);
+===========[output]===========
+160
+```
+`call_user_function()`并不是只能调用PHP脚本中定义的函数，内核或其它扩展注册的函数同样可以通过此函数调用，比如：array_merge()。
+```c
+PHP_FUNCTION(my_func_1)
+{
+    zend_array  *arr1, *arr2;
+    zval        call_func_name, call_func_ret, call_func_params[2];
+    uint32_t    call_func_param_cnt = 2;
+    zend_string *call_func_str;
+    char        *func_name = "array_merge";
+
+    if(zend_parse_parameters(ZEND_NUM_ARGS(), "hh", &arr1, &arr2) == FAILURE){
+        RETURN_FALSE;
+    }   
+    //分配zend_string
+    call_func_str = zend_string_init(func_name, strlen(func_name), 0);
+    //设置到zval
+    ZVAL_STR(&call_func_name, call_func_str);
+
+    ZVAL_ARR(&call_func_params[0], arr1);
+    ZVAL_ARR(&call_func_params[1], arr2);
+
+    if(SUCCESS != call_user_function(EG(function_table), NULL, &call_func_name, &call_func_ret, call_func_param_cnt, call_func_params)){
+        zend_string_release(call_func_str);
+        RETURN_FALSE;
+    }
+    zend_string_release(call_func_str);
+    RETURN_ARR(Z_ARRVAL(call_func_ret));
+}
+```
+```php
+$arr1 = array(1,2);
+$arr2 = array(3,4);
+
+$arr = my_func_1($arr1, $arr2);
+var_dump($arr);
+```
+你可能会注意到，上面的例子通过`call_user_function()`调用函数时并没有增加两个数组参数的引用计数，但根据前面介绍的内容：函数传参时不会硬拷贝value，而是增加参数value的引用计数，然后在函数return阶段再把引用减掉。实际是`call_user_function()`替我们完成了这个工作，下面简单看下其处理过程。
+```c
+int call_user_function(HashTable *function_table, zval *object, zval *function_name, zval *retval_ptr, uint32_t param_count, zval params[])
+{
+    return call_user_function_ex(function_table, object, function_name, retval_ptr, param_count, params, 1, NULL);
+}
+
+int call_user_function_ex(HashTable *function_table, zval *object, zval *function_name, zval *retval_ptr, uint32_t param_count, zval params[], int no_separation, zend_array *symbol_table)
+{
+    zend_fcall_info fci;
+
+    fci.size = sizeof(fci);
+    fci.function_table = function_table;
+    fci.object = object ? Z_OBJ_P(object) : NULL;
+    ZVAL_COPY_VALUE(&fci.function_name, function_name);
+    fci.retval = retval_ptr;
+    fci.param_count = param_count;
+    fci.params = params;
+    fci.no_separation = (zend_bool) no_separation;
+    fci.symbol_table = symbol_table;
+
+    return zend_call_function(&fci, NULL);
+}
+```
+`call_user_function()`将我们提供的参数组装为`zend_fcall_info`结构，然后调用`zend_call_function()`进行处理，还记得`zend_parse_parameters()`那个"f"解析符吗？它也是将输入的函数名称解析为一个`zend_fcall_info`，可以更方便的调用函数，同时我们也可以自己创建一个`zend_fcall_info`结构，然后使用`zend_call_function()`完成函数的调用。
+```c
+int zend_call_function(zend_fcall_info *fci, zend_fcall_info_cache *fci_cache)
+{
+    ...
+    for (i=0; i<fci->param_count; i++) {
+        zval *param;
+        zval *arg = &fci->params[i];
+        ...
+        //为参数添加引用
+        if (Z_OPT_REFCOUNTED_P(arg)) {
+            Z_ADDREF_P(arg);
+        }
+    }
+    ...
+    //调用的是用户函数
+    if (func->type == ZEND_USER_FUNCTION) {
+        //执行
+        zend_init_execute_data(call, &func->op_array, fci->retval);
+        zend_execute_ex(call);
+    }else if (func->type == ZEND_INTERNAL_FUNCTION){ //内部函数
+        if (EXPECTED(zend_execute_internal == NULL)) {
+            func->internal_function.handler(call, fci->retval);
+        } else {
+            zend_execute_internal(call, fci->retval);
+        }
+    }
+    ...
+}
+```
 
