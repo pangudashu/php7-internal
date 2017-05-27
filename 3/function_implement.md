@@ -93,7 +93,7 @@ typedef struct _zend_arg_info {
     zend_uchar type_hint; //显式声明的参数类型，比如(array $param_1)
     zend_uchar pass_by_reference; //是否引用传参，参数前加&的这个值就是1
     zend_bool allow_null; //是否允许为NULL,注意：这个值并不是用来表示参数是否为必传的
-    zend_bool is_variadic; //是否为可变参数，即...用法，与golang的用法相同，5.6以上新增的一个用法
+    zend_bool is_variadic; //是否为可变参数，即...用法，与golang的用法相同，5.6以上新增的一个用法：function my_func($a, ...$b){...}
 } zend_arg_info;
 ```
 每个参数都有一个上面的结构，所有参数的结构保存在`zend_op_array.arg_info`数组中，这里有一个地方需要注意：`zend_op_array->arg_info`数组保存的并不全是输入参数，如果函数声明了返回值类型则也会为它创建一个`zend_arg_info`，这个结构在arg_info数组的第一个位置，这种情况下`zend_op_array->arg_info`指向的实际是数组的第二个位置，返回值的结构通过`zend_op_array->arg_info[-1]`读取，这里先单独看下编译时的处理：
