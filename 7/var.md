@@ -109,3 +109,7 @@ zend_string常用的宏：
 
 ### 7.7.4 数组操作
 
+```c
+ZVAL_NEW_ARR(array);
+zend_hash_init(Z_ARRVAL_P(array), size, NULL, ZVAL_PTR_DTOR, 0);
+```
