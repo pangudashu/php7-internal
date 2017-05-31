@@ -97,7 +97,7 @@ zval的类型通过`Z_TYPE(zval)`、`Z_TYPE_P(zval*)`两个宏获取，这个值
 #define Z_TRY_DELREF(z)             Z_TRY_DELREF_P(&(z))
 ```
 ### 7.7.4 字符串操作
-zend_string常用的宏及函数：
+PHP中字符串(即：zend_string)操作相关的宏及函数：
 ```c
 //创建zend_string
 zend_string *zend_string_init(const char *str, size_t len, int persistent);
@@ -116,6 +116,15 @@ zend_string *zend_string_extend(zend_string *s, size_t len, int persistent);
 
 //截断字符串，与zend_string_realloc()类似，不同的是len不能大于s的长度
 zend_string *zend_string_truncate(zend_string *s, size_t len, int persistent);
+
+//获取字符串refcount
+uint32_t zend_string_refcount(const zend_string *s);
+
+//增加字符串refcount
+uint32_t zend_string_addref(zend_string *s);
+
+//减少字符串refcount
+uint32_t zend_string_delref(zend_string *s);
 
 //释放字符串，减少refcount，为0时销毁
 void zend_string_release(zend_string *s);
@@ -146,8 +155,9 @@ zend_bool zend_string_equals(zend_string *s1, zend_string *s2);
 * __ht：__ 数组地址HashTable*，如果内部使用可以直接通过emalloc分配
 * __nSize：__ 初始化大小，只是参考值，这个值会被对齐到2^n，最小为8
 * __pHashFunction：__ 无用，设置为NULL即可
-* __pDestructor：__ 销毁或更新数组元素时会回调这个函数处理，比如在函数中创建一个数组返回给PHP用户空间作为变量使用，则需要将这个值设为ZVAL_PTR_DTOR，当变量销毁时将调用此函数进行清理，如果不设置的话可能会造成内存泄漏
+* __pDestructor：__ 删除或更新数组元素时会调用这个函数对操作的元素进行处理，比如将一个字符串插入数组，字符串的refcount增加，删除时不是简单的将元素的Bucket删除就可以了，还需要对其refcount进行处理，这个函数就是进行清理工作的
 * __persistent：__ 是否持久化
+
 示例：
 ```c
 zval        array;
@@ -157,7 +167,104 @@ ZVAL_NEW_ARR(&array);
 zend_hash_init(Z_ARRVAL(array), size, NULL, ZVAL_PTR_DTOR, 0);
 ```
 #### 7.7.5.2 插入、更新元素
+数组元素的插入、更新主要有三种情况：key为zend_string、key为普通字符串、key为数值索引，相关的宏及函数：
+```c
+// 1) key为zend_string
 
+//插入或更新元素，会增加key的refcount
+#define zend_hash_update(ht, key, pData) \
+        _zend_hash_update(ht, key, pData ZEND_FILE_LINE_CC)
+
+//插入或更新元素，当Bucket类型为indirect时，将pData更新至indirect的值，而不是更新Bucket
+#define zend_hash_update_ind(ht, key, pData) \
+        _zend_hash_update_ind(ht, key, pData ZEND_FILE_LINE_CC)
+
+//添加元素，与zend_hash_update()类似，不同的地方在于如果元素已经存在则不会更新
+#define zend_hash_add(ht, key, pData) \
+        _zend_hash_add(ht, key, pData ZEND_FILE_LINE_CC)
+
+//直接插入元素，不管key存在与否，如果存在也不覆盖原来元素，而是当做哈希冲突处理，所有会出现一个数组中key相同的情况，慎用!!!
+#define zend_hash_add_new(ht, key, pData) \
+        _zend_hash_add_new(ht, key, pData ZEND_FILE_LINE_CC)
+
+// 2) key为普通字符串：char*
+
+//与上面几个对应，这里的key为普通字符串，会自动生成zend_string的key
+#define zend_hash_str_update(ht, key, len, pData) \
+        _zend_hash_str_update(ht, key, len, pData ZEND_FILE_LINE_CC)
+#define zend_hash_str_update_ind(ht, key, len, pData) \
+        _zend_hash_str_update_ind(ht, key, len, pData ZEND_FILE_LINE_CC)
+#define zend_hash_str_add(ht, key, len, pData) \
+        _zend_hash_str_add(ht, key, len, pData ZEND_FILE_LINE_CC)
+#define zend_hash_str_add_new(ht, key, len, pData) \
+        _zend_hash_str_add_new(ht, key, len, pData ZEND_FILE_LINE_CC)
+
+// 3) key为数值索引
+
+//插入元素，h为数值
+#define zend_hash_index_add(ht, h, pData) \
+        _zend_hash_index_add(ht, h, pData ZEND_FILE_LINE_CC)
+
+//与zend_hash_add_new()类似
+#define zend_hash_index_add_new(ht, h, pData) \
+        _zend_hash_index_add_new(ht, h, pData ZEND_FILE_LINE_CC)
+
+//更新第h个元素
+#define zend_hash_index_update(ht, h, pData) \
+        _zend_hash_index_update(ht, h, pData ZEND_FILE_LINE_CC)
+
+//使用自动索引值
+#define zend_hash_next_index_insert(ht, pData) \
+        _zend_hash_next_index_insert(ht, pData ZEND_FILE_LINE_CC)
+
+#define zend_hash_next_index_insert_new(ht, pData) \
+        _zend_hash_next_index_insert_new(ht, pData ZEND_FILE_LINE_CC)
+```
 #### 7.7.5.3 查找元素
+```c
+//根据zend_string key查找数组元素
+ZEND_API zval* ZEND_FASTCALL zend_hash_find(const HashTable *ht, zend_string *key);
 
-#### 7.7.5.4 销毁数组
+//根据普通字符串key查找元素
+ZEND_API zval* ZEND_FASTCALL zend_hash_str_find(const HashTable *ht, const char *key, size_t len);
+
+//获取数值索引元素
+ZEND_API zval* ZEND_FASTCALL zend_hash_index_find(const HashTable *ht, zend_ulong h);
+
+//判断元素是否存在
+ZEND_API zend_bool ZEND_FASTCALL zend_hash_exists(const HashTable *ht, zend_string *key);
+ZEND_API zend_bool ZEND_FASTCALL zend_hash_str_exists(const HashTable *ht, const char *str, size_t len);
+ZEND_API zend_bool ZEND_FASTCALL zend_hash_index_exists(const HashTable *ht, zend_ulong h);
+
+//获取数组元素数
+#define zend_hash_num_elements(ht) \
+    (ht)->nNumOfElements
+//与zend_hash_num_elements()类似，会有一些特殊处理
+ZEND_API uint32_t zend_array_count(HashTable *ht);
+```
+#### 7.7.5.4 删除元素
+```c
+//删除key
+ZEND_API int ZEND_FASTCALL zend_hash_del(HashTable *ht, zend_string *key);
+
+//与zend_hash_del()类似，不同地方是如果元素类型为indirect则同时销毁indirect的值
+ZEND_API int ZEND_FASTCALL zend_hash_del_ind(HashTable *ht, zend_string *key);
+ZEND_API int ZEND_FASTCALL zend_hash_str_del(HashTable *ht, const char *key, size_t len);
+ZEND_API int ZEND_FASTCALL zend_hash_str_del_ind(HashTable *ht, const char *key, size_t len);
+ZEND_API int ZEND_FASTCALL zend_hash_index_del(HashTable *ht, zend_ulong h);
+ZEND_API void ZEND_FASTCALL zend_hash_del_bucket(HashTable *ht, Bucket *p);
+```
+#### 7.7.5.5 数组遍历
+
+
+#### 7.7.5.6 其它操作
+```c
+#define zend_hash_merge(target, source, pCopyConstructor, overwrite)                    \
+    _zend_hash_merge(target, source, pCopyConstructor, overwrite ZEND_FILE_LINE_CC)
+
+#define zend_hash_sort(ht, compare_func, renumber) \
+    zend_hash_sort_ex(ht, zend_sort, compare_func, renumber)
+```
+
+#### 7.7.5.5 销毁数组
+
