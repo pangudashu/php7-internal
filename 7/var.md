@@ -1,8 +1,6 @@
 ## 7.7 zval的操作
 扩展中经常会用到各种类型的zval，PHP提供了很多宏用于不同类型zval的操作，尽管我们也可以自己操作zval，但这并不是一个好习惯，因为zval有很多其它用途的标识，如果自己去管理这些值将是非常繁琐的一件事，所以我们应该使用PHP提供的这些宏来操作用到的zval。
 
-本节提到的zval泛指zval及各种zend_value。
-
 ### 7.7.1 新生成各类型zval
 PHP7将变量的引用计数转移到了具体的value上，所以zval更多的是作为统一的传输格式，很多情况下只是临时性使用，比如函数调用时的传参，最终需要的数据是zval携带的zend_value，函数从zval取得zend_value后就不再关心zval了，这种就可以直接在栈上分配zval。分配完zval后需要将其设置为我们需要的类型以及设置其zend_value，PHP中定义的`ZVAL_XXX()`系列宏就是用来干这个的，这些宏第一个参数z均为要设置的zval的指针，后面为要设置的zend_value。
 
@@ -66,14 +64,6 @@ zval的类型通过`Z_TYPE(zval)`、`Z_TYPE_P(zval*)`两个宏获取，这个值
 #define Z_PTR(zval)                 (zval).value.ptr
 #define Z_PTR_P(zval_p)             Z_PTR(*(zval_p))
 ```
-zend_string常用的宏：
-```c
-//zstr类型为zend_string*
-#define ZSTR_VAL(zstr)  (zstr)->val
-#define ZSTR_LEN(zstr)  (zstr)->len
-#define ZSTR_H(zstr)    (zstr)->h
-#define ZSTR_HASH(zstr) zend_string_hash_val(zstr)
-```
 ### 7.7.3 引用计数
 ```c
 //获取引用数：pz类型为zval*
@@ -106,10 +96,68 @@ zend_string常用的宏：
 #define Z_TRY_ADDREF(z)             Z_TRY_ADDREF_P(&(z))
 #define Z_TRY_DELREF(z)             Z_TRY_DELREF_P(&(z))
 ```
-
-### 7.7.4 数组操作
-
+### 7.7.4 字符串操作
+zend_string常用的宏及函数：
 ```c
-ZVAL_NEW_ARR(array);
-zend_hash_init(Z_ARRVAL_P(array), size, NULL, ZVAL_PTR_DTOR, 0);
+//创建zend_string
+zend_string *zend_string_init(const char *str, size_t len, int persistent);
+
+//字符串复制，只增加引用
+zend_string *zend_string_copy(zend_string *s);
+
+//字符串拷贝，硬拷贝
+zend_string *zend_string_dup(zend_string *s, int persistent);
+
+//将字符串按len大小重新分配，会减少s的refcount，返回新的字符串
+zend_string *zend_string_realloc(zend_string *s, size_t len, int persistent);
+
+//延长字符串，与zend_string_realloc()类似，不同的是len不能小于s的长度
+zend_string *zend_string_extend(zend_string *s, size_t len, int persistent);
+
+//截断字符串，与zend_string_realloc()类似，不同的是len不能大于s的长度
+zend_string *zend_string_truncate(zend_string *s, size_t len, int persistent);
+
+//释放字符串，减少refcount，为0时销毁
+void zend_string_release(zend_string *s);
+
+//销毁字符串，不管引用计数是否为0
+void zend_string_free(zend_string *s);
+
+//比较两个字符串是否相等，区分大小写，memcmp()
+zend_bool zend_string_equals(zend_string *s1, zend_string *s2);
+
+//比较两个字符串是否相等，不区分大小写
+#define zend_string_equals_ci(s1, s2) \
+    (ZSTR_LEN(s1) == ZSTR_LEN(s2) && !zend_binary_strcasecmp(ZSTR_VAL(s1), ZSTR_LEN(s1), ZSTR_VAL(s2), ZSTR_LEN(s2)))
+
+//其它宏，zstr类型为zend_string*
+#define ZSTR_VAL(zstr)  (zstr)->val //获取字符串
+#define ZSTR_LEN(zstr)  (zstr)->len //获取字符串长度
+#define ZSTR_H(zstr)    (zstr)->h   //获取字符串哈希值
+#define ZSTR_HASH(zstr) zend_string_hash_val(zstr) //计算字符串哈希值
 ```
+### 7.7.5 数组操作
+#### 7.7.5.1 创建数组
+创建一个新的HashTable分为两步：首先是分配zend_array内存，这个可以通过`ZVAL_NEW_ARR()`宏分配，也可以自己直接分配；然后初始化数组，通过`zend_hash_init()`宏完成，如果不进行初始化数组将无法使用。
+```c
+#define zend_hash_init(ht, nSize, pHashFunction, pDestructor, persistent) \
+    _zend_hash_init((ht), (nSize), (pDestructor), (persistent) ZEND_FILE_LINE_CC)
+```
+* __ht：__ 数组地址HashTable*，如果内部使用可以直接通过emalloc分配
+* __nSize：__ 初始化大小，只是参考值，这个值会被对齐到2^n，最小为8
+* __pHashFunction：__ 无用，设置为NULL即可
+* __pDestructor：__ 销毁或更新数组元素时会回调这个函数处理，比如在函数中创建一个数组返回给PHP用户空间作为变量使用，则需要将这个值设为ZVAL_PTR_DTOR，当变量销毁时将调用此函数进行清理，如果不设置的话可能会造成内存泄漏
+* __persistent：__ 是否持久化
+示例：
+```c
+zval        array;
+uint32_t    size;
+
+ZVAL_NEW_ARR(&array);
+zend_hash_init(Z_ARRVAL(array), size, NULL, ZVAL_PTR_DTOR, 0);
+```
+#### 7.7.5.2 插入、更新元素
+
+#### 7.7.5.3 查找元素
+
+#### 7.7.5.4 销毁数组
