@@ -254,17 +254,66 @@ ZEND_API int ZEND_FASTCALL zend_hash_str_del_ind(HashTable *ht, const char *key,
 ZEND_API int ZEND_FASTCALL zend_hash_index_del(HashTable *ht, zend_ulong h);
 ZEND_API void ZEND_FASTCALL zend_hash_del_bucket(HashTable *ht, Bucket *p);
 ```
-#### 7.7.5.5 数组遍历
+#### 7.7.5.5 遍历
+数组遍历类似foreach的用法，在扩展中可以通过如下的方式遍历：
+```c
+zval *val;
+ZEND_HASH_FOREACH_VAL(ht, val) {
+    ...
+} ZEND_HASH_FOREACH_END();
+```
+遍历过程中会把数组元素赋值给val，除了上面这个宏还有很多其他用于遍历的宏，这里列几个比较常用的：
+```c
+//遍历获取所有的数值索引
+#define ZEND_HASH_FOREACH_NUM_KEY(ht, _h) \
+    ZEND_HASH_FOREACH(ht, 0); \
+    _h = _p->h;
 
+//遍历获取所有的key
+#define ZEND_HASH_FOREACH_STR_KEY(ht, _key) \
+    ZEND_HASH_FOREACH(ht, 0); \
+    _key = _p->key;
 
+//上面两个的聚合
+#define ZEND_HASH_FOREACH_KEY(ht, _h, _key) \
+    ZEND_HASH_FOREACH(ht, 0); \
+    _h = _p->h; \
+    _key = _p->key;
+
+//遍历获取数值索引key及value
+#define ZEND_HASH_FOREACH_NUM_KEY_VAL(ht, _h, _val) \
+    ZEND_HASH_FOREACH(ht, 0); \
+    _h = _p->h; \
+    _val = _z;
+
+//遍历获取key及value
+#define ZEND_HASH_FOREACH_STR_KEY_VAL(ht, _key, _val) \
+    ZEND_HASH_FOREACH(ht, 0); \
+    _key = _p->key; \
+    _val = _z;
+
+#define ZEND_HASH_FOREACH_KEY_VAL(ht, _h, _key, _val) \
+    ZEND_HASH_FOREACH(ht, 0); \
+    _h = _p->h; \
+    _key = _p->key; \
+    _val = _z;
+```
 #### 7.7.5.6 其它操作
 ```c
+//合并两个数组，将source合并到target，overwrite为元素冲突时是否覆盖
 #define zend_hash_merge(target, source, pCopyConstructor, overwrite)                    \
     _zend_hash_merge(target, source, pCopyConstructor, overwrite ZEND_FILE_LINE_CC)
 
+//导出数组
+ZEND_API HashTable* ZEND_FASTCALL zend_array_dup(HashTable *source);
+```
+```c
 #define zend_hash_sort(ht, compare_func, renumber) \
     zend_hash_sort_ex(ht, zend_sort, compare_func, renumber)
 ```
+数组排序，compare_func为typedef int  (*compare_func_t)(const void *, const void *)，需要自己定义比较函数，参数类型为Bucket*，renumber表示是否更改键值，如果为1则会在排序后重新生成各元素的h。PHP中的sort()、rsort()、ksort()等都是基于这个函数实现的。
 
-#### 7.7.5.5 销毁数组
-
+#### 7.7.5.7 销毁数组
+```c
+ZEND_API void ZEND_FASTCALL zend_array_destroy(HashTable *ht);
+```
