@@ -94,7 +94,7 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_INCLUDE_OR_EVAL_SPEC_CONST_HAN
 
 ![](../img/include_2.png)
 
-> 注意：这里include文件中定义的var_1实际是替换了原文件中的变量，也就是只有一个var_1，所以此处zend_array的引用是1而不是2
+> 注意：这里include文件中定义的var_2实际是替换了原文件中的变量，也就是只有一个var_2，所以此处zend_array的引用是1而不是2
 
 接下来就是被包含文件的执行，执行到`$var_2 = array()`时，将原array(1,2,3)引用减1变为0，这时候将其释放，然后将新的value：array()赋给$var_2，这个过程就是普通变量的赋值过程，注意此时调用文件中的$var_2仍然指向被释放掉的value，此时的内存关系：
 
