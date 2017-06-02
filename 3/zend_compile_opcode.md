@@ -245,7 +245,7 @@ int main()
     return 0;
 }
 ```
-我们知道name的值分配在栈上，而"pangudashu"分配在常量区，那么"name"变量名分配在哪呢？
+我们知道指针name分配在栈上，而"pangudashu"分配在常量区，那么"name"变量名分配在哪呢？
 
 实际上C里面是不会存变量名称的，编译的过程会将变量名替换为偏移量表示：`ebp - 偏移量`或`esp + 偏移量`，将上面的代码转为汇编:
 ```c
@@ -272,7 +272,7 @@ main:
 
 ![php vs c](../img/php_vs_c.png)
 
-在编译时就可确定且不会改变的量称为字面量，也称作常量(IS_CONST)，这些值在编译阶段就已经分配zval，保存在`zend_op_array->literals`数组中(对应c程序的常量内存区)，访问时通过`_zend_op_array->literals + 偏移量`读取，举个例子：
+在编译时就可确定且不会改变的量称为字面量，也称作常量(IS_CONST)，这些值在编译阶段就已经分配zval，保存在`zend_op_array->literals`数组中(对应c程序的常量存储区)，访问时通过`_zend_op_array->literals + 偏移量`读取，举个例子：
 ```c
 <?php
 $a = 56;
@@ -372,11 +372,11 @@ void zend_compile_stmt(zend_ast *ast)
     switch (ast->kind) {
         case xxx:
             ...
-                break;
+	    break;
         case ZEND_AST_ECHO:
             zend_compile_echo(ast);
             break;
-        ...
+	    ...
         default:
         {
             znode result;
