@@ -90,7 +90,7 @@ __(1)fpm_conf_init_main():__
 
 __(2)fpm_scoreboard_init_main():__ 分配用于记录worker进程运行信息的共享内存，按照worker pool的最大worker进程数分配，每个worker pool分配一个`fpm_scoreboard_s`结构，pool下对应的每个worker进程分配一个`fpm_scoreboard_proc_s`结构，各结构的对应关系如下图。
 
-![](../worker_pool_struct.png)
+![](../img/worker_pool_struct.png)
 
 __(3)fpm_signals_init_main():__ 
 ```c
@@ -170,7 +170,7 @@ run_child: //只有worker进程会到这里
 ```
 在fork后worker进程返回了监听的套接字继续main()后面的处理，而master将永远阻塞在`fpm_event_loop()`，接下来分别介绍master、worker进程的后续操作。
 
-### 1.3.4 处理请求
+### 1.3.4 请求处理
 `fpm_run()`执行后将fork出worker进程，worker进程返回`main()`中继续向下执行，后面的流程就是worker进程不断accept请求，然后执行PHP脚本并返回。整体流程如下：
 
 * __(1)等待请求：__ worker进程阻塞在fcgi_accept_request()等待请求；
