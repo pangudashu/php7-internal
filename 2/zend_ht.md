@@ -38,7 +38,7 @@ struct _zend_array {
     dtor_func_t       pDestructor;
 };
 ```
-HashTable中有两个非常相近的值:`nNumUsed`、`nNumOfElements`，`nNumOfElements`表示哈希表已有元素数，那这个值不跟`nNumUsed`一样吗？为什么要定义两个呢？实际上它们有不同的含义，当将一个元素从哈希表删除时并不会将对应的Bucket移除，而是将Bucket存储的zval标示为`IS_UNDEF`，只有扩容时发现nNumOfElements与nNumUsed相差达到一定数量(这个数量是:`ht->nNumUsed - ht->nNumOfElements > (ht->nNumOfElements >> 5)`)时才会将已删除的元素全部移除，重新构建哈希表。所以`nNumUsed`>=`nNumOfElements`。
+HashTable中有两个非常相近的值:`nNumUsed`、`nNumOfElements`，`nNumOfElements`表示哈希表已有元素数，那这个值不跟`nNumUsed`一样吗？为什么要定义两个呢？实际上它们有不同的含义，当将一个元素从哈希表删除时并不会将对应的Bucket移除，而是将Bucket存储的zval修改为`IS_UNDEF`，只有扩容时发现nNumOfElements与nNumUsed相差达到一定数量(这个数量是:`ht->nNumUsed - ht->nNumOfElements > (ht->nNumOfElements >> 5)`)时才会将已删除的元素全部移除，重新构建哈希表。所以`nNumUsed`>=`nNumOfElements`。
 
 HashTable中另外一个非常重要的值`arData`，这个值指向存储元素数组的第一个Bucket，插入元素时按顺序 __依次插入__ 数组，比如第一个元素在arData[0]、第二个在arData[1]...arData[nNumUsed]。PHP数组的有序性正是通过`arData`保证的，这是第一个与普通散列表实现不同的地方。
 
@@ -155,7 +155,7 @@ static void ZEND_FASTCALL zend_hash_do_resize(HashTable *ht)
 ```
 
 ### 2.2.6 重建散列表
-当删除元素达到一定数量或扩容后都需要重建散列表，因为value在Bucket位置移动了或哈希数组nTableSize变化了导致key与value的映射关系改变，重建过程实际就是遍历Bucket数组中的value，然后重新计算映射值更新到散列表，除了更新散列表之外，这里还有一个重要的处理：移除已删除的value，开始的时候我们说过，删除value时只是将value的type变为了IS_UNDEF，并没有实际从Bucket数组中删除，如果这些value一直存在那么将浪费很多空间，所以这里会把它们移除，操作的方式也比较简单：将后面未删除的value依次前移，具体过程如下：
+当删除元素达到一定数量或扩容后都需要重建散列表，因为value在Bucket位置移动了或哈希数组nTableSize变化了导致key与value的映射关系改变，重建过程实际就是遍历Bucket数组中的value，然后重新计算映射值更新到散列表，除了更新散列表之外，这里还有一个重要的处理：移除已删除的value，开始的时候我们说过，删除value时只是将value的type设置为IS_UNDEF，并没有实际从Bucket数组中删除，如果这些value一直存在那么将浪费很多空间，所以这里会把它们移除，操作的方式也比较简单：将后面未删除的value依次前移，具体过程如下：
 ```c
 //zend_hash.c
 ZEND_API int ZEND_FASTCALL zend_hash_rehash(HashTable *ht)
