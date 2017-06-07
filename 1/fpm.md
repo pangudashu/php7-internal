@@ -263,7 +263,7 @@ void fpm_event_loop(int err)
 
 __(1)sp[1]管道可读事件：__ 
 
-在`fpm_init()`阶段master曾创建了一个全双工的管道：sp，然后在这里创建了一个sp[1]可读的事件，当sp[1]可读时将交由`fpm_got_signal()`处理，向sp[0]写数据时sp[1]才会可读，那么什么时机会向sp[0]写数据呢？前面已经提到了：当master收到注册的那几种信号时会写入sp[0]端，这个时候将触发sp[1]可读事件。
+在`fpm_init()`阶段master曾创建了一个全双工的管道：sp，然后在这里创建了一个sp[0]可读的事件，当sp[0]可读时将交由`fpm_got_signal()`处理，向sp[1]写数据时sp[0]才会可读，那么什么时机会向sp[1]写数据呢？前面已经提到了：当master收到注册的那几种信号时会写入sp[1]端，这个时候将触发sp[0]可读事件。
 
 ![](../img/master_event_1.png)
 
@@ -278,7 +278,7 @@ __(1)sp[1]管道可读事件：__
 
 __(2)fpm_pctl_perform_idle_server_maintenance_heartbeat():__
 
-这是进程管理实现的主要事件，master启动了一个定时器，每割1s触发一次，主要用于dynamic、ondemand模式下的worker管理，master会定时检查各work pool的worker进程数，通过此定时器实现worker数量的控制，处理逻辑如下：
+这是进程管理实现的主要事件，master启动了一个定时器，每隔1s触发一次，主要用于dynamic、ondemand模式下的worker管理，master会定时检查各worker pool的worker进程数，通过此定时器实现worker数量的控制，处理逻辑如下：
 ```c
 static void fpm_pctl_perform_idle_server_maintenance(struct timeval *now)
 {
