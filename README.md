@@ -4,6 +4,11 @@
 
 代码版本：php-7.0.12
 ````
+## 反馈
+[交流&吐槽](https://github.com/pangudashu/php7-internal/issues/3)  [错误反馈](https://github.com/pangudashu/php7-internal/issues/2)
+
+![weixin](img/talk.png)
+
 ## 目录：
 * 第1章 PHP基本架构
    * 1.1 PHP简介
@@ -79,15 +84,14 @@
       * [7.7.5 数组操作](7/var.md)
    * [7.8 常量](7/constant.md)
    * 7.9 面向对象
-      * 7.6.1 扩展中创建对象
-      * 7.6.2 创建内部类
+      7.9.1 内部类注册
+      7.9.2 定义成员属性
+      7.9.3 定义成员方法
+      7.9.4 定义常量
+      7.9.5 类的实例化
    * 7.10 资源类型
    * 7.11 经典扩展解析
       * 7.8.1 Yaf
       * 7.8.2 Redis
-      * 7.8.3 Memcached
-
-## 反馈
-[交流&吐槽](https://github.com/pangudashu/php7-internal/issues/3)  [错误反馈](https://github.com/pangudashu/php7-internal/issues/2)
 
 
