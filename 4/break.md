@@ -121,8 +121,10 @@ static uint32_t zend_get_brk_cont_target(const zend_op_array *op_array, const ze
     int array_offset = opline->op1.num;//break、continue所属循环zend_brk_cont_element的存储下标
     zend_brk_cont_element *jmp_to;
     do {
+        //从break/continue所在循环层开始
         jmp_to = &op_array->brk_cont_array[array_offset];
         if (nest_levels > 1) {
+            //如果还没到要跳出的层数则接着跳到上层
             array_offset = jmp_to->parent;
         }
     } while (--nest_levels > 0);
