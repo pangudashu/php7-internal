@@ -1,4 +1,4 @@
-# 附录1：PHP语法实现：break/continue按标签中断
+# 附录1：break/continue按标签中断语法实现
 
 ## 1.1 背景
 首先看下目前PHP中break/continue多层循环的情况：
