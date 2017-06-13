@@ -13,7 +13,7 @@ $b = 1;
 
 ### 2.1.1 变量的基础结构
 ```c
-//zend_type.h
+//zend_types.h
 typedef struct _zval_struct     zval;
 
 typedef union _zend_value {
