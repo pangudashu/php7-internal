@@ -64,7 +64,66 @@ zval的类型通过`Z_TYPE(zval)`、`Z_TYPE_P(zval*)`两个宏获取，这个值
 #define Z_PTR(zval)                 (zval).value.ptr
 #define Z_PTR_P(zval_p)             Z_PTR(*(zval_p))
 ```
-### 7.7.3 引用计数
+### 7.7.3 类型转换
+```c
+//将原类型转为特定类型，会更改原来的值
+ZEND_API void ZEND_FASTCALL convert_to_long(zval *op);
+ZEND_API void ZEND_FASTCALL convert_to_double(zval *op);
+ZEND_API void ZEND_FASTCALL convert_to_long_base(zval *op, int base);
+ZEND_API void ZEND_FASTCALL convert_to_null(zval *op);
+ZEND_API void ZEND_FASTCALL convert_to_boolean(zval *op);
+ZEND_API void ZEND_FASTCALL convert_to_array(zval *op);
+ZEND_API void ZEND_FASTCALL convert_to_object(zval *op);
+
+#define convert_to_cstring(op) if (Z_TYPE_P(op) != IS_STRING) { _convert_to_cstring((op) ZEND_FILE_LINE_CC); }
+#define convert_to_string(op) if (Z_TYPE_P(op) != IS_STRING) { _convert_to_string((op) ZEND_FILE_LINE_CC); }
+
+//获取格式化为long的值，不会更改原来的值，op类型为zval*，返回值为zend_long
+#define zval_get_long(op) _zval_get_long((op))
+//获取格式化为double的值，返回值double
+#define zval_get_double(op) _zval_get_double((op))
+//获取格式化为string的值，返回值zend_string *
+#define zval_get_string(op) _zval_get_string((op))
+
+//字符串转整形
+ZEND_API int ZEND_FASTCALL zend_atoi(const char *str, int str_len);
+ZEND_API zend_long ZEND_FASTCALL zend_atol(const char *str, int str_len);
+
+//判断是否为true
+#define zval_is_true(op) \
+    zend_is_true(op)
+```
+### 7.7.4 引用计数
+在扩展中操作与PHP用户空间相关的变量时需要考虑是否需要对其引用计数进行加减，比如下面这个例子：
+```php
+function test($arr){
+    return $arr;
+}
+
+$a = array(1,2);
+$b = test($a);
+```
+如果把函数test()用内部函数实现，这个函数接受了一个PHP用户空间传入的数组参数，然后又返回并赋值给了PHP用户空间的另外一个变量，这个时候就需要增加传入数组的refcount，因为这个数组由PHP用户空间分配，函数调用前refcount=1，传到内部函数时相当于赋值给了函数的参数，因此refcount增加了1变为2，这次增加在函数执行完释放参数时会减掉，等返回并赋值给$b后此时共有两个变量指向这个数组，所以内部函数需要增加refcount，增加的引用是给返回值的。test()翻译成内部函数：
+```c
+PHP_FUNCTION(test)
+{   
+    zval    *arr;
+
+    if(zend_parse_parameters(ZEND_NUM_ARGS(), "a", &arr) == FAILURE){
+        RETURN_FALSE;
+    }
+    //如果注释掉下面这句将导致core dumped
+    Z_TRY_ADDREF_P(arr);
+    RETURN_ARR(Z_ARR_P(arr));
+} 
+```
+那么在哪些情况下需要考虑设置引用计数呢？一个关键条件是：操作的是与PHP用户空间相关的变量，包括对用户空间变量的修改、赋值，要明确的一点是引用计数是用来解决多个变量指向同一个value问题的，所以在PHP中来回传递zval的时候就需要考虑下是不是要修改引用计数，下面总结下PHP中常见的会对引用计数进行操作的情况：
+* __(1)变量赋值:__ 变量赋值是最常见的情况，一个用到引用计数的变量类型在初始赋值时其refcount=1，如果后面把此变量又赋值给了其他变量那么就会相应的增加其引用计数
+* __(2)数组操作：__ 如果把一个变量插入数组中那么就需要增加这个变量的引用计数，如果要删除一个数组元素则要相应的减少其引用
+* __(3)函数调用：__ 传参实际可以当做普通的变量赋值，将调用空间的变量赋值给被调函数空间的变量，函数返回时会销毁函数空间的变量，这时又会减掉传参的引用，这两个过程由内核完成，不需要扩展自己处理
+* __(4)成员属性：__ 当把一个变量赋值给对象的成员属性时需要增加引用计数
+
+PHP中定义了以下宏用于引用计数的操作：
 ```c
 //获取引用数：pz类型为zval*
 #define Z_REFCOUNT_P(pz)            zval_refcount_p(pz)
@@ -96,7 +155,22 @@ zval的类型通过`Z_TYPE(zval)`、`Z_TYPE_P(zval*)`两个宏获取，这个值
 #define Z_TRY_ADDREF(z)             Z_TRY_ADDREF_P(&(z))
 #define Z_TRY_DELREF(z)             Z_TRY_DELREF_P(&(z))
 ```
-### 7.7.4 字符串操作
+这些宏操作类型都是zval或zval*，如果需要操作具体value的引用计数可以使用以下宏：
+```c
+//直接获取zend_value的引用，可以直接通过这个宏修改value的refcount
+#define GC_REFCOUNT(p)              (p)->gc.refcount
+```
+另外还有几个常用的宏：
+```c
+//判断zval是否用到引用计数机制
+#define Z_REFCOUNTED(zval)           ((Z_TYPE_FLAGS(zval) & IS_TYPE_REFCOUNTED) != 0)
+#define Z_REFCOUNTED_P(zval_p)       Z_REFCOUNTED(*(zval_p))
+
+//根据zval获取value的zend_refcounted头部
+#define Z_COUNTED(zval)              (zval).value.counted
+#define Z_COUNTED_P(zval_p)          Z_COUNTED(*(zval_p))
+```
+### 7.7.5 字符串操作
 PHP中字符串(即：zend_string)操作相关的宏及函数：
 ```c
 //创建zend_string
@@ -145,8 +219,10 @@ zend_bool zend_string_equals(zend_string *s1, zend_string *s2);
 #define ZSTR_H(zstr)    (zstr)->h   //获取字符串哈希值
 #define ZSTR_HASH(zstr) zend_string_hash_val(zstr) //计算字符串哈希值
 ```
-### 7.7.5 数组操作
-#### 7.7.5.1 创建数组
+除了上面这些，还有很多字符串大小转换、字符串比较的API定义在zend_operators.h中，这里不再列举。
+
+### 7.7.6 数组操作
+#### 7.7.6.1 创建数组
 创建一个新的HashTable分为两步：首先是分配zend_array内存，这个可以通过`ZVAL_NEW_ARR()`宏分配，也可以自己直接分配；然后初始化数组，通过`zend_hash_init()`宏完成，如果不进行初始化数组将无法使用。
 ```c
 #define zend_hash_init(ht, nSize, pHashFunction, pDestructor, persistent) \
@@ -166,7 +242,7 @@ uint32_t    size;
 ZVAL_NEW_ARR(&array);
 zend_hash_init(Z_ARRVAL(array), size, NULL, ZVAL_PTR_DTOR, 0);
 ```
-#### 7.7.5.2 插入、更新元素
+#### 7.7.6.2 插入、更新元素
 数组元素的插入、更新主要有三种情况：key为zend_string、key为普通字符串、key为数值索引，相关的宏及函数：
 ```c
 // 1) key为zend_string
@@ -220,7 +296,7 @@ zend_hash_init(Z_ARRVAL(array), size, NULL, ZVAL_PTR_DTOR, 0);
 #define zend_hash_next_index_insert_new(ht, pData) \
         _zend_hash_next_index_insert_new(ht, pData ZEND_FILE_LINE_CC)
 ```
-#### 7.7.5.3 查找元素
+#### 7.7.6.3 查找元素
 ```c
 //根据zend_string key查找数组元素
 ZEND_API zval* ZEND_FASTCALL zend_hash_find(const HashTable *ht, zend_string *key);
@@ -242,7 +318,7 @@ ZEND_API zend_bool ZEND_FASTCALL zend_hash_index_exists(const HashTable *ht, zen
 //与zend_hash_num_elements()类似，会有一些特殊处理
 ZEND_API uint32_t zend_array_count(HashTable *ht);
 ```
-#### 7.7.5.4 删除元素
+#### 7.7.6.4 删除元素
 ```c
 //删除key
 ZEND_API int ZEND_FASTCALL zend_hash_del(HashTable *ht, zend_string *key);
@@ -254,7 +330,7 @@ ZEND_API int ZEND_FASTCALL zend_hash_str_del_ind(HashTable *ht, const char *key,
 ZEND_API int ZEND_FASTCALL zend_hash_index_del(HashTable *ht, zend_ulong h);
 ZEND_API void ZEND_FASTCALL zend_hash_del_bucket(HashTable *ht, Bucket *p);
 ```
-#### 7.7.5.5 遍历
+#### 7.7.6.5 遍历
 数组遍历类似foreach的用法，在扩展中可以通过如下的方式遍历：
 ```c
 zval *val;
@@ -298,7 +374,7 @@ ZEND_HASH_FOREACH_VAL(ht, val) {
     _key = _p->key; \
     _val = _z;
 ```
-#### 7.7.5.6 其它操作
+#### 7.7.6.6 其它操作
 ```c
 //合并两个数组，将source合并到target，overwrite为元素冲突时是否覆盖
 #define zend_hash_merge(target, source, pCopyConstructor, overwrite)                    \
@@ -313,7 +389,7 @@ ZEND_API HashTable* ZEND_FASTCALL zend_array_dup(HashTable *source);
 ```
 数组排序，compare_func为typedef int  (*compare_func_t)(const void *, const void *)，需要自己定义比较函数，参数类型为Bucket*，renumber表示是否更改键值，如果为1则会在排序后重新生成各元素的h。PHP中的sort()、rsort()、ksort()等都是基于这个函数实现的。
 
-#### 7.7.5.7 销毁数组
+#### 7.7.6.7 销毁数组
 ```c
 ZEND_API void ZEND_FASTCALL zend_array_destroy(HashTable *ht);
 ```
