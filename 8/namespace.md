@@ -36,9 +36,12 @@ namespace com\aa{
 namespace com\bb;
 /* ... */
 ```
+如果没有定义任何命名空间，所有的类、函数和常量的定义都是在全局空间，与 PHP 引入命名空间概念前一样。
+
 ### 8.2.2 内部实现
 命名空间的实现实际比较简单，当声明了一个命名空间后，接下来编译类、函数和常量时会把类名、函数名和常量名统一加上命名空间的名称作为前缀存储，也就是说声明在命名空间中的类、函数和常量的实际名称是被修改过的，这样来看他们与普通的定义方式是没有区别的，只是这个前缀是内核帮我们自动添加的，例如：
 ```php
+//ns_define.php
 namespace com\aa;
 
 const MY_CONST = 1234;
@@ -169,3 +172,102 @@ __(2)编译常量__
 总结下命名空间的定义：编译时如果发现定义了一个namespace，则将命名空间名称保存到FC(current_namespace)，编译类、函数、常量时先判断FC(current_namespace)是否为空，如果为空则按正常名称编译，如果不为空则将类名、函数名、常量名加上FC(current_namespace)作为前缀，然后再以修改后的名称注册。整个过程相当于PHP帮我们补全了类名、函数名、常量名。
 
 ## 8.3 使用命名空间
+### 8.3.1 基本使用
+上一节我们知道了定义在命名空间中的类、函数和常量只是加上了namespace名称作为前缀，既然是这样那么在使用时加上同样的前缀是否就可以了呢？答案是肯定的，比如上面那个例子：在com\aa命名空间下定义了一个常量MY_CONST，那么就可以这么使用：
+```php
+include 'ns_define.php';
+
+echo \com\aa\MY_CONST;
+```
+这种按照实际类名、函数名、常量名使用的方式很容易理解，与普通的类型没有差别，这种以"\"开头使用的名称称之为：完全限定名称，类似于绝对目录的概念，使用这种名称PHP会直接根据"\"之后的名称去对应的符号表中查找(namespace定义时前面是没有加"\"的，所以查找时也会去掉这个字符)。
+
+除了这种形式的名称之外，还有两种形式的名称：
+* __非限定名称:__ 即没有加任何namespace前缀的普通名称，比如my_func()，使用这种名称时如果当前有命名空间则会被解析为：currentnamespace\my_func，如果当前没有命名空间则按照原始名称my_func解析
+* __部分限定名称:__ 即包含namespace前缀，但不是以"\"开始的，比如：aa\my_func()，类似相对路径的概念，这种名称解析规则比较复杂，如果当前空间没有使用use导入任何namespace那么与非限定名称的解析规则相同，即如果当前有命名空间则会把解析为：currentnamespace\aa\my_func，否则解析为aa\my_func，使用use的情况后面再作说明
+
+### 8.3.2 use导入
+使用一个命名空间中的类、函数、常量虽然可以通过完全限定名称的形式访问，但是这种方式需要在每一处使用的地方都加上完整的namespace名称，如果将来namespace名称变更了就需要所有使用的地方都改一遍，这将是很痛苦的一件事，为此，PHP提供了一种命名空间导入/别名的机制，可以通过use关键字将一个命名空间导入或者定义一个别名，然后在使用时就可以通过导入的namespace名称最后一个域或者别名访问，不需要使用完整的名称，比如：
+```php
+//ns_define.php
+namespace aa\bb\cc\dd;
+
+const MY_CONST = 1234;
+```
+可以采用如下几种方式使用：
+```php
+//方式1:
+include 'ns_define.php';
+
+use aa\bb\cc\dd;
+
+echo dd\MY_CONST;
+```
+```php
+//方式2:
+include 'ns_define.php';
+
+use aa\bb\cc;
+
+echo cc\dd\MY_CONST;
+```
+```php
+//方式3:
+include 'ns_define.php';
+
+use aa\bb\cc\dd as DD;
+
+echo DD\MY_CONST;
+```
+```php
+//方式4:
+include 'ns_define.php';
+
+use aa\bb\cc as CC;
+
+echo CC\dd\MY_CONST;
+```
+这种机制的实现原理也比较简单：编译期间如果发现use语句 ，那么就将把这个use后的命名空间名称插入一个哈希表：FC(imports)，而哈希表的key就是定义的别名，如果没有定义别名则key使用按"\"分割的最后一节，比如方式2的情况将以cc作为key，即：FC(imports)["cc"] = "aa\bb\cc\dd"；接下来在使用类、函数和常量时会把名称按"\"分割，然后以第一节为key查找FC(imports)，如果找到了则将FC(imports)中保存的名称与使用时的名称拼接在一起，组成完整的名称。实际上这种机制是把完整的名称切割缩短然后缓存下来，使用时再拼接成完整的名称，也就是内核帮我们组装了名称，对内核而言，最终使用的都是包括完整namespace的名称。
+
+![](../img/namespace_com.png)
+
+use除了上面介绍的用法外还可以导入一个类，导入后再使用类就不需要加namespace了，例如：
+```php
+//ns_define.php
+namespace aa\bb\cc\dd;
+
+class my_class { /* ... */ }
+```
+```php
+include 'ns_define.php';
+//导入一个类
+use aa\bb\cc\dd\my_class;
+//直接使用
+$obj = new my_class();
+var_dump($obj);
+```
+use的这两种用法实现原理是一样的，都是在编译时通过查找FC(imports)实现的名称补全。从PHP 5.6起，use又提供了两种针对函数、常量的导入，可以通过`use function xxx`及`use const xxx`导入一个函数、常量，这种用法的实现原理与上面介绍的实际是相同，只是在编译时没有保存到FC(imports)，zend_file_context结构中的另外两个哈希表就是在这种情况下使用的：
+```c
+typedef struct _zend_file_context {
+    ...
+    //用于保存导入的类或命名空间
+    HashTable *imports;
+    //用于保存导入的函数
+    HashTable *imports_function;
+    //用于保存导入的常量
+    HashTable *imports_const;
+} zend_file_context;
+```
+简单总结下use的几种不同用法：
+* __a.导入命名空间:__ 导入的名称保存在FC(imports)中，编译使用的语句时搜索此符号表进行补全
+* __b.导入类:__ 导入的名称保存在FC(imports)中，与a不同的时如果不会根据"\"切割后的最后一节检索，而是直接使用类名查找
+* __c.导入函数:__ 通过`use function`导入到FC(imports_function)，补全时先查找FC(imports_function)，如果没有找到则继续按照a的情况处理
+* __d.导入常量:__ 通过`use const`导入到FC(imports_const)，不全是先查找FC(imports_const)，如果没有找到则继续按照a的情况处理
+
+比如：
+```php
+use aa\bb;                  //导入namespace
+use aa\bb\MY_CLASS;         //导入类
+use function aa\bb\my_func; //导入函数
+use const aa\bb\MY_CONST;   //导入常量
+```
+
