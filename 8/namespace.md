@@ -171,8 +171,8 @@ __(2)编译常量__
 
 总结下命名空间的定义：编译时如果发现定义了一个namespace，则将命名空间名称保存到FC(current_namespace)，编译类、函数、常量时先判断FC(current_namespace)是否为空，如果为空则按正常名称编译，如果不为空则将类名、函数名、常量名加上FC(current_namespace)作为前缀，然后再以修改后的名称注册。整个过程相当于PHP帮我们补全了类名、函数名、常量名。
 
-## 8.3 使用命名空间
-### 8.3.1 基本使用
+## 8.3 命名空间的使用
+### 8.3.1 基本用法
 上一节我们知道了定义在命名空间中的类、函数和常量只是加上了namespace名称作为前缀，既然是这样那么在使用时加上同样的前缀是否就可以了呢？答案是肯定的，比如上面那个例子：在com\aa命名空间下定义了一个常量MY_CONST，那么就可以这么使用：
 ```php
 include 'ns_define.php';
@@ -429,7 +429,7 @@ zend_string *zend_resolve_non_class_name(
 ```
 可以看到，函数与常量的的补全逻辑只是优先用原始名称去FC(imports_function)或FC(imports_const)查找，如果没有找到再去FC(imports)中匹配。如果我们这样导入了一个函数：`use aa\bb\my_func;`，编译`my_func()`会在FC(imports_function)中根据"my_func"找到"aa\bb\my_func"，从而使用完整的这个名称。
 
-### 8.3.3 动态使用
+### 8.3.3 动态用法
 前面介绍的这些命名空间的使用都是名称为CONST类型的情况，所有的处理都是在编译环节完成的，PHP是动态语言，能否动态使用命名空间呢？举个例子：
 ```php
 $class_name = "\aa\bb\my_class";
