@@ -94,7 +94,16 @@
    * 7.11 经典扩展解析
       * 7.8.1 Yaf
       * 7.8.2 Redis
-
+* 第8章 命名空间
+   * [8.1 概述](8/namespace.md)
+   * [8.2 命名空间的定义](8/namespace.md)
+      * [8.2.1 定义语法](8/namespace.md)
+      * [8.2.2 内部实现](8/namespace.md)
+   * [8.3 命名空间的使用](8/namespace.md)
+      * [8.3.1 基本用法](8/namespace.md)
+      * [8.3.2 use导入](8/namespace.md)
+      * [8.3.3 动态用法](8/namespace.md)
+ 
 ## 附录
    * [附录1：break/continue按标签中断语法实现](try/break.md)
 

@@ -263,11 +263,177 @@ typedef struct _zend_file_context {
 * __c.导入函数:__ 通过`use function`导入到FC(imports_function)，补全时先查找FC(imports_function)，如果没有找到则继续按照a的情况处理
 * __d.导入常量:__ 通过`use const`导入到FC(imports_const)，不全是先查找FC(imports_const)，如果没有找到则继续按照a的情况处理
 
-比如：
 ```php
 use aa\bb;                  //导入namespace
 use aa\bb\MY_CLASS;         //导入类
 use function aa\bb\my_func; //导入函数
 use const aa\bb\MY_CONST;   //导入常量
 ```
+接下来看下内核的具体实现，首先看下use的编译：
+```c
+void zend_compile_use(zend_ast *ast)
+{
+    zend_string *current_ns = FC(current_namespace);
+    //use的类型
+    uint32_t type = ast->attr;
+    //根据类型获取存储哈希表：FC(imports)、FC(imports_function)、FC(imports_const)
+    HashTable *current_import = zend_get_import_ht(type);
+    ...
+    //use可以同时导入多个
+    for (i = 0; i < list->children; ++i) {
+        zend_ast *use_ast = list->child[i];
+        zend_ast *old_name_ast = use_ast->child[0];
+        zend_ast *new_name_ast = use_ast->child[1];
+        //old_name为use后的namespace名称，new_name为as定义的别名
+        zend_string *old_name = zend_ast_get_str(old_name_ast);
+        zend_string *new_name, *lookup_name;
+
+        if (new_name_ast) {
+            //如果有as别名则直接使用
+            new_name = zend_string_copy(zend_ast_get_str(new_name_ast));
+        } else {
+            const char *unqualified_name;
+            size_t unqualified_name_len;
+            if (zend_get_unqualified_name(old_name, &unqualified_name, &unqualified_name_len)) {
+                //按"\"分割，取最后一节为new_name
+                new_name = zend_string_init(unqualified_name, unqualified_name_len, 0);
+            } else {
+                //名称中没有"\"：use aa
+                new_name = zend_string_copy(old_name);
+            }
+        }
+        //如果是use const则大小写敏感，其它用法都转为小写
+        if (case_sensitive) {
+            lookup_name = zend_string_copy(new_name);
+        } else {
+            lookup_name = zend_string_tolower(new_name);
+        }
+        ...
+        if (current_ns) {
+            //如果当前是在命名空间中则需要检查名称是否冲突
+            ...
+        }
+
+        //插入FC(imports/imports_function/imports_const)，key为lookup_name，value为old_name
+        if (!zend_hash_add_ptr(current_import, lookup_name, old_name)) {
+            ...
+        }
+    }
+}
+```
+从use的编译过程可以看到，编译时的主要处理是把use导入的名称以别名或最后分节为key存储到对应的哈希表中，接下来我们看下在编译使用类、函数、常量的语句时是如何处理的。使用的语法类型比较多，比如类的使用就有new、访问静态属性、调用静态方法等，但是不管什么语句都会经历获取类名、函数名、常量名这一步，类名的补全就是在这一步完成的。
+
+__(1)补全类名__
+
+编译时通过zend_resolve_class_name()方法进行类名补全，如果没有任何namespace那么就返回原始的类名，比如编译`new my_class()`时，首先会把"my_class"传入该函数，如果查找FC(imports)后发现是一个use导入的类则把补全后的完整名称返回，然后再进行后续的处理。
+```c
+zend_string *zend_resolve_class_name(zend_string *name, uint32_t type)
+{
+    char *compound;
+    //"namespace\xxx\类名"这种用法表示使用当前命名空间
+    if (type == ZEND_NAME_RELATIVE) {
+        return zend_prefix_with_ns(name);
+    }
+
+    //完全限定的形式：new \aa\bb\my_class()
+    if (type == ZEND_NAME_FQ || ZSTR_VAL(name)[0] == '\\') {
+        if (ZSTR_VAL(name)[0] == '\\') {
+            name = zend_string_init(ZSTR_VAL(name) + 1, ZSTR_LEN(name) - 1, 0);
+        } else {
+            zend_string_addref(name);
+        }
+        ...
+        return name;
+    }
+   
+    //如果当前脚本有通过use导入namespace
+    if (FC(imports)) {
+        compound = memchr(ZSTR_VAL(name), '\\', ZSTR_LEN(name));
+        if (compound) {
+            // 1) 没有直接导入一个类的情况，用法a
+            //名称中包括"\"，比如：new aa\bb\my_class()
+            size_t len = compound - ZSTR_VAL(name);
+            //根据按"\"分割后的最后一节为key查找FC(imports)
+            zend_string *import_name =
+                zend_hash_find_ptr_lc(FC(imports), ZSTR_VAL(name), len);
+            //如果找到了表示通过use导入了namespace
+            if (import_name) {
+                return zend_concat_names(
+                    ZSTR_VAL(import_name), ZSTR_LEN(import_name), ZSTR_VAL(name) + len + 1, ZSTR_LEN(name) - len - 1);
+            }
+        } else {
+            // 2) 通过use导入一个类的情况，用法b
+            //直接根据原始类名查找
+            zend_string *import_name
+                = zend_hash_find_ptr_lc(FC(imports), ZSTR_VAL(name), ZSTR_LEN(name));
+
+            if (import_name) {
+                return zend_string_copy(import_name);
+            }
+        }
+    }
+    //没有使用use或没命中任何use导入的namespace，按照基本用法处理：如果当前在一个namespace下则解释为currentnamespace\my_class
+    return zend_prefix_with_ns(name);
+}
+```
+此方法除了类的名称后还有一个type参数，这个参数是解析语法是根据使用方式确定的，共有三种类型：
+* __ZEND_NAME_NOT_FQ:__ 非限定名称，也就是普通的类名，没有加namespace，比如：new my_class()
+* __ZEND_NAME_RELATIVE:__ 相对名称，强制按照当前所属命名空间解析，使用时通过在类前加"namespace\xx"，比如：new namespace\my_class()，如果当前是全局空间则等价于:new my_class，如果当前命名空间为currentnamespace，则解析为"currentnamespace\my_class"
+* __ZEND_NAME_FQ:__ 完全限定名称，即以"\"开头的
+
+__(2)补全函数名、常量名__
+
+函数与常量名称的补全操作是相同的:
+```c
+//补全函数名称
+zend_string *zend_resolve_function_name(zend_string *name, uint32_t type, zend_bool *is_fully_qualified)
+{   
+    return zend_resolve_non_class_name( 
+        name, type, is_fully_qualified, 0, FC(imports_function));
+}
+//补全常量名称
+zend_string *zend_resolve_const_name(zend_string *name, uint32_t type, zend_bool *is_fully_qualified)
+    return zend_resolve_non_class_name(
+        name, type, is_fully_qualified, 1, FC(imports_const));
+}
+```
+可以看到函数与常量最终调用同一方法处理，不同点在于传入了各自的存储哈希表：
+```c
+zend_string *zend_resolve_non_class_name(
+    zend_string *name, uint32_t type, zend_bool *is_fully_qualified,
+    zend_bool case_sensitive, HashTable *current_import_sub
+) {
+    char *compound;
+    *is_fully_qualified = 0;
+    //完整名称，直接返回，不需要补全
+    if (ZSTR_VAL(name)[0] == '\\') {
+        *is_fully_qualified = 1;
+        return zend_string_init(ZSTR_VAL(name) + 1, ZSTR_LEN(name) - 1, 0);
+    }
+    //与类的用法相同
+    if (type == ZEND_NAME_RELATIVE) {
+        *is_fully_qualified = 1;
+        return zend_prefix_with_ns(name);
+    }
+    //current_import_sub如果是函数则为FC(imports_function)，否则为FC(imports_const)
+    if (current_import_sub) {
+        //查找FC(imports_function)或FC(imports_const)
+        ...
+    }
+    //查找FC(imports)
+    compound = memchr(ZSTR_VAL(name), '\\', ZSTR_LEN(name));
+    ...
+
+    return zend_prefix_with_ns(name);
+}
+```
+可以看到，函数与常量的的补全逻辑只是优先用原始名称去FC(imports_function)或FC(imports_const)查找，如果没有找到再去FC(imports)中匹配。如果我们这样导入了一个函数：`use aa\bb\my_func;`，编译`my_func()`会在FC(imports_function)中根据"my_func"找到"aa\bb\my_func"，从而使用完整的这个名称。
+
+### 8.3.3 动态使用
+前面介绍的这些命名空间的使用都是名称为CONST类型的情况，所有的处理都是在编译环节完成的，PHP是动态语言，能否动态使用命名空间呢？举个例子：
+```php
+$class_name = "\aa\bb\my_class";
+$obj = new $class_name;
+```
+如果类似这样的用法只能只用完全限定名称，也就是按照实际存储的名称使用，无法进行自动名称补全。
 
