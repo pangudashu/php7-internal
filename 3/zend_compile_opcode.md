@@ -516,7 +516,7 @@ void zend_compile_expr(znode *result, zend_ast *ast)
 ```
 >> __第3步：__ 上面两步已经分别生成了变量赋值的op1、op2，下面就是根据这俩值生成opcode的过程。
 ```c
-tatic zend_op *zend_emit_op(znode *result, zend_uchar opcode, znode *op1, znode *op2)
+static zend_op *zend_emit_op(znode *result, zend_uchar opcode, znode *op1, znode *op2)
 {
     zend_op *opline = get_next_op(CG(active_op_array)); //当前zend_op_array下生成一条新的指令
     opline->opcode = opcode;
