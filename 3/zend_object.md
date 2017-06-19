@@ -437,7 +437,7 @@ static int zend_std_compare_objects(zval *o1, zval *o2)
 "==="的比较通过函数`zend_is_identical()`处理，比较简单，这里不再展开。
 
 #### 3.4.2.6 对象的销毁
-object与string、array等类型不同，它是个符合类型，所以它的销毁过程更加复杂，赋值、函数调用结束或主动unset等操作中如果发现object引用计数为0则将触发销毁动作。
+object与string、array等类型不同，它是个复合类型，所以它的销毁过程更加复杂，赋值、函数调用结束或主动unset等操作中如果发现object引用计数为0则将触发销毁动作。
 ```php
 //情况1
 $obj1 = new my_function();

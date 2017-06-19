@@ -62,7 +62,7 @@ ZEND_API zend_executor_globals executor_globals;
 struct _zend_execute_data {
     const zend_op       *opline;  //指向当前执行的opcode，初始时指向zend_op_array起始位置
     zend_execute_data   *call;             /* current call                   */
-    zval                *return_value;  //返回值指针 */
+    zval                *return_value;  //返回值指针
     zend_function       *func;          //当前执行的函数（非函数调用时为空）
     zval                 This;          //这个值并不仅仅是面向对象的this，还有另外两个值也通过这个记录：call_info + num_args，分别存在zval.u1.reserved、zval.u2.num_args
     zend_class_entry    *called_scope;  //当前call的类
