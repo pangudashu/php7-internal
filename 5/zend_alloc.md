@@ -151,7 +151,56 @@ static void *zend_mm_alloc_huge(zend_mm_heap *heap, size_t size ZEND_FILE_LINE_D
     return ptr;
 }
 ```
-huge的分配过程还是比较简单的。
+huge的分配实际就是分配多个chunk，chunk的分配也是large、small内存分配的基础，它是ZendMM向系统申请内存的唯一粒度。在申请chunk内存时有一个关键操作，那就是将内存地址对齐到ZEND_MM_CHUNK_SIZE，也就是说申请的chunk地址都是ZEND_MM_CHUNK_SIZE的整数倍，注意：这里说的内存对齐值并不是系统的字节对齐值，所以需要在申请后自己调整下。ZendMM的处理方法是：先按实际要申请的内存大小申请一次，如果系统分配的地址恰好是ZEND_MM_CHUNK_SIZE的整数倍那么就不需要调整了，直接返回使用；如果不是ZEND_MM_CHUNK_SIZE的整数倍，ZendMM会把这块内存释放掉，然后按照"实际要申请的内存大小+ZEND_MM_CHUNK_SIZE"的大小重新申请一块内存，多申请的ZEND_MM_CHUNK_SIZE大小的内存是用来调整的，ZendMM会从系统分配的地址向后偏移到ZEND_MM_CHUNK_SIZE的整数倍位置，调整完以后会把多余的内存再释放掉，如下图所示,虚线部分为alignment大小的内容，灰色部分为申请的内容大小，系统返回的地址为ptr1，而实际使用的内存是从ptr2开始的。
+
+![](../img/chunk_alloc.png)
+
+下面看下chunk的具体分配过程：
+```c
+//size为申请内存的大小，alignment为内存对齐值，一般为ZEND_MM_CHUNK_SIZE
+static void *zend_mm_chunk_alloc_int(size_t size, size_t alignment)
+{
+    //向系统申请size大小的内存
+    void *ptr = zend_mm_mmap(size);
+    if (ptr == NULL) {
+        return NULL;
+    } else if (ZEND_MM_ALIGNED_OFFSET(ptr, alignment) == 0) {//判断申请的内存是否为alignment的整数倍
+        //是的话直接返回
+        return ptr;
+    }else{
+        //申请的内存不是按照alignment对齐的，注意这里的alignment并不是系统的字节对齐值
+        size_t offset;
+
+        //将申请的内存释放掉重新申请
+        zend_mm_munmap(ptr, size);
+        //重新申请一块内存，这里会多申请一块内存，用于截取到alignment的整数倍，可以忽略REAL_PAGE_SIZE
+        ptr = zend_mm_mmap(size + alignment - REAL_PAGE_SIZE);
+        //offset为ptr距离上一个alignment对齐内存位置的大小，注意不能往前移，因为前面的内存都是分配了的
+        offset = ZEND_MM_ALIGNED_OFFSET(ptr, alignment);
+        if (offset != 0) {
+            offset = alignment - offset;
+            zend_mm_munmap(ptr, offset);
+            //偏移ptr，对齐到alignment
+            ptr = (char*)ptr + offset;
+            alignment -= offset;
+        }
+        if (alignment > REAL_PAGE_SIZE) {
+            zend_mm_munmap((char*)ptr + size, alignment - REAL_PAGE_SIZE);
+        }
+        return ptr;
+    }
+}
+```
+这个过程中用到了一个宏：
+```c
+#define ZEND_MM_ALIGNED_OFFSET(size, alignment) \
+    (((size_t)(size)) & ((alignment) - 1))
+```
+这个宏的作用是计算按alignment对齐的内存地址距离上一个alignment整数倍内存地址的大小，alignment必须为2的n次方，比如一段n*alignment大小的内存，ptr为其中一个位置，那么就可以通过位运算计算得到ptr所属内存块的offset：
+
+![](../img/align.png)
+
+这个位运算是因为alignment为2^n，所以可以通过alignment取到最低位的位置，也就是相对上一个整数倍alignment的offset，实际如果不用运算的话可以通过：`offset = (ptr/alignment取整)*alignment - ptr`得到，这个更容易理解些。
 
 #### 5.1.3.2 Large分配
 大于3/4的page_size(4KB)且小于等于511个page_size的内存申请，也就是一个chunk的大小够用(之所以是511个page而不是512个是因为第一个page始终被chunk结构占用)，__如果申请多个page的话 分配的时候这些page都是连续的__ 。
@@ -352,7 +401,9 @@ ZEND_API void ZEND_FASTCALL _efree(void *ptr ZEND_FILE_LINE_DC ZEND_FILE_LINE_OR
 
 static zend_always_inline void zend_mm_free_heap(zend_mm_heap *heap, void *ptr ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
 {
-    size_t page_offset = ZEND_MM_ALIGNED_OFFSET(ptr, ZEND_MM_CHUNK_SIZE); //根据内存地址及对齐值判断内存地址偏移量是否为0，是的话只有huge情况符合，page、slot分配出的内存地址偏移量一定是>=ZEND_MM_CHUNK_SIZE的，因为第一页始终被chunk自身结构占用，不可能分配出去
+    //根据内存地址及对齐值判断内存地址偏移量是否为0，是的话只有huge情况符合，page、slot分配出的内存地>址偏移量一定是>=ZEND_MM_CHUNK_SIZE的，因为第一页始终被chunk自身结构占用，不可能分配出去
+    //offset就是ptr距离当前chunk起始位置的偏移量
+    size_t page_offset = ZEND_MM_ALIGNED_OFFSET(ptr, ZEND_MM_CHUNK_SIZE);
 
     if (UNEXPECTED(page_offset == 0)) {
         if (ptr != NULL) {
@@ -360,6 +411,7 @@ static zend_always_inline void zend_mm_free_heap(zend_mm_heap *heap, void *ptr Z
             zend_mm_free_huge(heap, ptr ZEND_FILE_LINE_RELAY_CC ZEND_FILE_LINE_ORIG_RELAY_CC);
         }
     } else { //page或slot，根据chunk->map[]值判断当前page的分配类型
+        //根据ptr获取chunk的起始位置
         zend_mm_chunk *chunk = (zend_mm_chunk*)ZEND_MM_ALIGNED_BASE(ptr, ZEND_MM_CHUNK_SIZE);
         int page_num = (int)(page_offset / ZEND_MM_PAGE_SIZE);
         zend_mm_page_info info = chunk->map[page_num];
@@ -377,6 +429,8 @@ static zend_always_inline void zend_mm_free_heap(zend_mm_heap *heap, void *ptr Z
     }
 }
 ```
+释放的内存地址可能是chunk中间的任意位置，因为chunk分配时是按照ZEND_MM_CHUNK_SIZE对齐的，也就是chunk的起始内存地址一定是ZEND_MM_CHUNK_SIZE的整数倍，所以可以根据chunk上的任意位置知道chunk的起始位置。
+
 释放page的过程有一个地方值得注意，如果释放后发现当前chunk所有page都已经被释放则可能会释放所在chunk，还记得heap->cached_chunks吗？内存池会维持一定的chunk数，每次释放并不会直接销毁而是加入到cached_chunks中，这样下次申请chunk时直接就用了，同时为了防止占用过多内存，cached_chunks会根据每次request请求计算的chunk使用均值保证其维持在一定范围内。
 
 每次request请求结束会对内存池进行一次清理，检查cache的chunk数是否超过均值，超过的话就进行清理，具体的操作：`zend_mm_shutdown`，这里不再展开。
