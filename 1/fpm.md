@@ -236,8 +236,8 @@ worker处理到各个阶段时将会把当前阶段更新到`fpm_scoreboard_proc
 ```c
 void fpm_event_loop(int err)
 {
-    //创建一个io read的监听事件，这里监听的就是在fpm_init()阶段中通过socketpair()创建管道sp[1]
-    //当sp[1]可读时将回调fpm_got_signal()
+    //创建一个io read的监听事件，这里监听的就是在fpm_init()阶段中通过socketpair()创建管道sp[0]
+    //当sp[0]可读时将回调fpm_got_signal()
     fpm_event_set(&signal_fd_event, fpm_signals_get_fd(), FPM_EV_READ, &fpm_got_signal, NULL);
     fpm_event_add(&signal_fd_event, 0);
 
