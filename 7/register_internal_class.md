@@ -1,4 +1,4 @@
-###7.9.1.1 注册一个内部类
+### 7.9.1.1 注册一个内部类
 作为一个PHP工程师我们平时开发见到比较多的词应该就是 `class`, 那么在我们平时通过PHP脚本创建的类，怎样通过ZEND API去实现一个PHP内部类呢? 本章将会向你们讲述如何创建一个简单的内部类。
 
 ### 需要使用到的ZEND API
@@ -7,7 +7,7 @@
 | --- |
 |[zend_class_entry]()| 
 |[zend_register_internal_class()]()|
-|[INIT_CLASS_ENTRY()] ()|
+|[INIT_CLASS_ENTRY()]()|
 |[PHP_METHOD()]()|
 
 * 如果你对如何创建一个PHP扩展骨架还不太清楚建议你阅读鸟哥的 [ 用C/C++扩展你的PHP](http://www.laruence.com/2009/04/28/719.html)
