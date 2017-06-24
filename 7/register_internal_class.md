@@ -69,7 +69,7 @@ const zend_function_entry simple_class_methods[] = {
 
 ZEND_MINIT_FUNCTION(SimpleClass)
 {
-	  /* 声明类容器 */
+	/* 声明类容器 */
     zend_class_entry simple_class_container_ce; 
     /* 将类方法注入到类容器中 */
     INIT_CLASS_ENTRY(simple_class_container_ce, "Example\\SimpleClass", simple_class_methods);
