@@ -61,6 +61,8 @@ unset($arr["c"]);
 
 ![](../img/zend_hash_1.png)
 
+> 图中Bucket的zval.u2.next默认值应该为-1，不是0
+
 ### 2.2.2 映射函数
 映射函数(即：散列函数)是散列表的关键部分，它将key与value建立映射关系，一般映射函数可以根据key的哈希值与Bucket数组大小取模得到，即`key->h % ht->nTableSize`，但是PHP却不是这么做的：
 ```c
