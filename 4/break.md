@@ -19,7 +19,15 @@ typedef struct _zend_brk_cont_element {
 ```
 cont记录的是当前循环判断条件opcode起始位置，brk记录的是当前循环结束的位置，parent记录的是父层循环`zend_brk_cont_element`结构的存储位置，也就是说多层嵌套循环会生成一个`zend_brk_cont_element`的链表，每层循环编译结束时更新自己的`zend_brk_cont_element`结构，所以break、continue的处理过程实际就是根据跳出的层级索引到那一层的`zend_brk_cont_element`结构，然后得到它的cont、brk进行相应的opcode跳转。
 
-各循环的`zend_brk_cont_element`结构保存在`zend_op_array->brk_cont_array`数组中，实际这个数组在编译前就已经分配好了，编译各循环时依次申请一个`zend_brk_cont_element`，`zend_op_array->last_brk_cont`记录此数组第一个可用位置，每申请一个元素last_brk_cont就相应的增加1，parent记录的就是父层循环在`zend_op_array->brk_cont_array`中的位置。
+各循环的`zend_brk_cont_element`结构保存在`zend_op_array->brk_cont_array`数组中，编译各循环时依次申请一个`zend_brk_cont_element`，`zend_op_array->last_brk_cont`记录此数组第一个可用位置，每申请一个元素last_brk_cont就相应的增加1，然后将数组扩容，parent记录的就是父层循环结构在该数组中的存储位置。
+```c
+zend_brk_cont_element *get_next_brk_cont_element(zend_op_array *op_array)
+{
+    op_array->last_brk_cont++;
+    op_array->brk_cont_array = erealloc(op_array->brk_cont_array, sizeof(zend_brk_cont_element)*op_array->last_brk_cont);
+    return &op_array->brk_cont_array[op_array->last_brk_cont-1];
+}
+```
 
 示例：
 ```php
