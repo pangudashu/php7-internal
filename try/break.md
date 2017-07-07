@@ -79,7 +79,7 @@ for(...){
 __(1) 编译循环语句__
 
 ```c
-void zend_compile_for(zend_ast *ast) /* {{{ */
+void zend_compile_for(zend_ast *ast)
 {
     zend_ast *init_ast = ast->child[0];
     zend_ast *cond_ast = ast->child[1];
