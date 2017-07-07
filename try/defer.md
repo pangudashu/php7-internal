@@ -48,7 +48,7 @@ statement:
 修改完这两个文件后需要分别调用re2c、yacc生成对应的C文件，具体的生成命令可以在Makefile.frag中看到：
 ```c
 $ re2c --no-generation-date --case-inverted -cbdFt Zend/zend_language_scanner_defs.h -oZend/zend_language_scanner.c Zend/zend_language_scanner.l
-$ yacc -p ini_ -v -d Zend/zend_language_parser.y -oZend/zend_language_parser.c
+$ yacc -p zend -v -d Zend/zend_language_parser.y -oZend/zend_language_parser.c
 ```
 执行完以后将在Zend目录下重新生成zend_language_scanner.c、zend_language_parser.c两个文件。到这一步已经完成生成抽象语法树的工作了，重新编译PHP后已经能够解析defer语法了，将会生成以下节点：
 
@@ -140,7 +140,7 @@ void zend_emit_final_return(zval *zv)
     ret = zend_emit_op(NULL, returns_reference ? ZEND_RETURN_BY_REF : ZEND_RETURN, &zn, NULL);
     ret->extended_value = -1;
 
-    //编译defer call
+    //编译推迟执行的函数调用
     zend_emit_defer_call();
 }
 ```
@@ -172,7 +172,7 @@ void zend_emit_defer_call()
         //编译函数调用       
         zend_compile_call(&result, call_ast, BP_VAR_R);
     }
-    //compile ZEND_DEFER_CALL
+    //compile ZEND_DEFER_CALL_END
     zend_emit_op(NULL, ZEND_DEFER_CALL_END, NULL, NULL);
 }
 ```
@@ -200,5 +200,98 @@ func main(){
 到这一步我们已经完成defer函数调用的编译，此时重新编译PHP后可以看到通过defer推迟的函数调用已经被编译在最后了，只不过这个时候它们不能被执行。
 
 __(3)编译return__
+
+编译return时需要插入一条指令用于跳转到推迟执行的函数调用指令处，因此这里需要再定义一条opcode：ZEND_DEFER_CALL，在编译过程中defer call还未编译，因此此时还无法知道具体的跳转值。
+```c
+//zend_vm_opcodes.h
+#define ZEND_DEFER_CALL                      173
+#define ZEND_DEFER_CALL_END                  174
+```
+PHP脚本中声明的return语句由zend_compile_return()方法完成编译，在编译生成ZEND_DEFER_CALL指令时还需要将当前已定义的defer数(即在return前声明的defer)记录下来，用于计算具体的跳转值。
+```c
+void zend_compile_return(zend_ast *ast)
+{
+    ...
+    //在return前编译ZEND_DEFER_CALL：用于在执行retur前跳转到defer call
+    if (CG(active_op_array)->defer_call_array) {
+        defer_zn.op_type = IS_UNUSED;
+        defer_zn.u.op.num = CG(active_op_array)->last_defer;
+        zend_emit_op(NULL, ZEND_DEFER_CALL, NULL, &defer_zn);
+    }
+
+    //编译正常返回的指令
+    opline = zend_emit_op(NULL, by_ref ? ZEND_RETURN_BY_REF : ZEND_RETURN,
+        &expr_node, NULL); 
+    ...
+}
+```
+除了这种return外还有一种我们上面已经提过的return，即PHP内核编译的return指令，当PHP脚本中没有声明return语句时将执行内核添加的那条指令，因此也需要在zend_emit_final_return()加上上面的逻辑。
+```c
+void zend_emit_final_return(zval *zv)
+{
+    ...
+    //在return前编译ZEND_DEFER_CALL：用于在执行retur前跳转到defer call
+    if (CG(active_op_array)->defer_call_array) {
+        //当前return之前定义的defer数
+        defer_zn.op_type = IS_UNUSED;
+        defer_zn.u.op.num = CG(active_op_array)->last_defer;
+        zend_emit_op(NULL, ZEND_DEFER_CALL, NULL, &defer_zn);
+    }
+
+    //编译返回指令
+    ret = zend_emit_op(NULL, returns_reference ? ZEND_RETURN_BY_REF : ZEND_RETURN, &zn, NULL);
+    ret->extended_value = -1;
+    
+    //编译推迟执行的函数调用
+    zend_emit_defer_call();
+}
+```
+__(4)计算ZEND_DEFER_CALL指令的跳转位置__
+
+前面我们已经完成了推迟调用函数以及return编译过程的改造，在编译完成后ZEND_DEFER_CALL指令已经能够知道具体的跳转位置了，因为推迟调用的函数已经编译完成了，所以下一步就是为全部的ZEND_DEFER_CALL指令计算跳转值。前面曾介绍过，在编译完成有一个pass_two()的环节，我们就在这里完成具体跳转位置的计算，并把跳转位置保存到ZEND_DEFER_CALL指令的操作数中，在执行阶段直接跳转到对应位置。
+
+```c
+ZEND_API int pass_two(zend_op_array *op_array)
+{
+    zend_op *opline, *end;
+    ...
+    //遍历opcode
+    opline = op_array->opcodes;
+    end = opline + op_array->last; 
+    while (opline < end) {
+        switch (opline->opcode) {
+            ...
+            case ZEND_DEFER_CALL: //设置jmp
+                {
+                    uint32_t defer_start = op_array->defer_start_op;
+                    //skip_defer为当前return之后声明的defer数，也就是不需要执行的defer
+                    uint32_t skip_defer = op_array->last_defer - opline->op2.num;
+                    //defer_opline为推迟的函数调用起始位置
+                    zend_op *defer_opline = op_array->opcodes + defer_start;
+                    uint32_t n = 0;
+
+                    while(n <= skip_defer){
+                        if (defer_opline->opcode == ZEND_NOP && defer_opline->op1.var == -2) {
+                            n++;
+                        }
+                        defer_opline++;
+                        defer_start++;
+                    }
+
+                    //defer_start为opcode在op_array->opcodes数组中的位置
+                    opline->op1.opline_num = defer_start;
+                    //将跳转位置保存到操作数op1中
+                    ZEND_PASS_TWO_UPDATE_JMP_TARGET(op_array, opline, opline->op1);
+                }
+                break;
+        }
+        ...
+    }
+    ...  
+}
+```
+这里我们并没有直接编译为ZEND_JMP跳转指令，虽然ZEND_JMP可以跳转到后面的指令位置，但是最后的那条跳回return位置的指令(即：ZEND_DEFER_CALL_END)由于可能存在多个return的原因无法在编译期间确定具体的跳转值，只能在运行期间执行ZEND_DEFER_CALL时才能确定，所以需要在ZEND_DEFER_CALL指令的handler中将return的位置记录下来，执行ZEND_DEFER_CALL_END时根据这个值跳回。
+
+__(5)定义ZEND_DEFER_CALL、ZEND_DEFER_CALL_END指令的handler__
 
 
