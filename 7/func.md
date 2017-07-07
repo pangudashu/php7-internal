@@ -355,7 +355,7 @@ callable指函数或成员方法，如果参数是函数名称字符串、array(
 zend_fcall_info         callable; //注意，这两个结构不能是指针
 zend_fcall_info_cache   call_cache;
 
-if(zend_parse_parameters(
+if(zend_parse_parameters(ZEND_NUM_ARGS(), "f", &callable, &call_cache) == FAILURE){
     RETURN_FALSE;
 }
 ```
