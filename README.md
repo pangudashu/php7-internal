@@ -106,4 +106,5 @@
  
 ## 附录
    * [附录1：break/continue按标签中断语法实现](try/break.md)
+   * [附录2：defer推迟函数调用语法的实现](try/defer.md)
 
