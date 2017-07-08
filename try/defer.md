@@ -46,7 +46,7 @@ statement:
 ;
 ```
 修改完这两个文件后需要分别调用re2c、yacc生成对应的C文件，具体的生成命令可以在Makefile.frag中看到：
-```c
+```sh
 $ re2c --no-generation-date --case-inverted -cbdFt Zend/zend_language_scanner_defs.h -oZend/zend_language_scanner.c Zend/zend_language_scanner.l
 $ yacc -p zend -v -d Zend/zend_language_parser.y -oZend/zend_language_parser.c
 ```
@@ -294,4 +294,62 @@ ZEND_API int pass_two(zend_op_array *op_array)
 
 __(5)定义ZEND_DEFER_CALL、ZEND_DEFER_CALL_END指令的handler__
 
+ZEND_DEFER_CALL指令执行时需要将return的位置保存下来，我们把这个值保存到zend_execute_data结构中：
+```c
+//zend_compile.h
+struct _zend_execute_data {
+    ...
+    const zend_op       *return_opline;
+    ...
+}
+```
+opcode的handler定义在zend_vm_def.h文件中，定义完成后需要执行`php zend_vm_gen.php`脚本生成具体的handler函数。
+```c
+ZEND_VM_HANDLER(173, ZEND_DEFER_CALL, ANY, ANY)
+{
+    USE_OPLINE
 
+    //1) 将return指令的位置保存到EX(return_opline)
+    EX(return_opline) = opline + 1;
+
+    //2) 跳转
+    ZEND_VM_SET_OPCODE(OP_JMP_ADDR(opline, opline->op1));
+    ZEND_VM_CONTINUE();
+}
+
+ZEND_VM_HANDLER(174, ZEND_DEFER_CALL_END, ANY, ANY)
+{
+    USE_OPLINE
+
+    ZEND_VM_SET_OPCODE(EX(return_opline));
+    ZEND_VM_CONTINUE();
+}
+```
+到目前为止我们已经完成了全部的修改，重新编译PHP后就可以使用defer语法了：
+```php
+function shutdown($a){
+    echo $a."\n";
+}   
+function test(){
+    $a = 1234;
+    defer shutdown($a);
+    
+    $a = 8888;
+    
+    if(1){
+        return "mid end\n";
+    }   
+    defer shutdown("9999");
+    return "last end\n";
+}   
+
+echo test();
+```
+执行后将显示：
+```sh
+8888
+mid end
+```
+这里我们只实现了普通函数调用的方式，关于成员方法、静态方法、匿名函数等调用方式并未实现，留给有兴趣的读者自己去实现。
+
+完整代码：[https://github.com/pangudashu/php-7.0.12](https://github.com/pangudashu/php-7.0.12)
