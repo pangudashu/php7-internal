@@ -229,7 +229,7 @@ static zend_always_inline int zend_parse_arg_long(zval *arg, zend_long *dest, ze
     return 1;
 }
 ```
-> __Note:__ "l"与"L"的区别在于，当传参不是整形且转为整形后超过了整形的大小范围时，"L"将值调整为整形的最大或最小值，而"l"将报错，比如传的参数是字符串"9223372036854775808"，转整形后超过了unsigned int64的最大值：0xFFFFFFFFFFFFFFFF，"L"将解析为0xFFFFFFFFFFFFFFFF。
+> __Note:__ "l"与"L"的区别在于，当传参不是整形且转为整形后超过了整形的大小范围时，"L"将值调整为整形的最大或最小值，而"l"将报错，比如传的参数是字符串"9223372036854775808"(0x7FFFFFFFFFFFFFFF + 1)，转整形后超过了有符号int64的最大值：0x7FFFFFFFFFFFFFFF，所以如果是"L"将解析为0x7FFFFFFFFFFFFFFF。
 
 #### 7.6.2.2 布尔型：b
 通过"b"标识符表示将传入的参数解析为布尔型，解析到的变量必须是zend_bool：
