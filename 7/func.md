@@ -497,7 +497,7 @@ echo $a;
 
 ### 7.6.4 函数返回值
 调用内部函数时其返回值指针作为参数传入，这个参数为`zval *return_value`，如果函数有返回值直接设置此指针即可，需要特别注意的是设置返回值时需要增加其引用计数，举个例子来看：
-    ```c
+```c
 PHP_FUNCTION(my_func_1)
 {
     zval    *arr;
@@ -510,8 +510,6 @@ PHP_FUNCTION(my_func_1)
     Z_ADDREF_P(arr);
 
     //设置返回值为数组：
-    //return_value->u1.type = IS_ARRAY; 
-    //return_value->value->arr = arr->value->arr;
     ZVAL_ARR(return_value, Z_ARR_P(arr));
 } 
 ```
