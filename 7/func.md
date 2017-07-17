@@ -123,7 +123,7 @@ PHP_FUNCTION(my_func_1)
 
 ![](../img/internal_func_param.png)
 
-注意：解析时除了整形、浮点型、布尔型是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`zval *arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，解析获取的是这些参数的地址。`zend_parse_parameters()`调用了`zend_parse_va_args()`进行处理，简单看下解析过程：
+注意：解析时除了整形、浮点型、布尔型是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`zval *arr = &param_1`，也就是说参数始终存储在zend_execute_data上，解析获取的是这些参数的地址。`zend_parse_parameters()`调用了`zend_parse_va_args()`进行处理，简单看下解析过程：
 ```c
 //va就是定义的要解析到的各个变量的地址
 static int zend_parse_va_args(int num_args, const char *type_spec, va_list *va, int flags)
