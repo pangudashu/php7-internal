@@ -20,12 +20,12 @@ ZEND_API void execute_ex(zend_execute_data *ex)
 ```
 执行器实际是一个大循环，从第一条opcode开始执行，execute_data->opline指向当前执行的指令，执行完以后指向下一条指令，opline类似eip(或rip)寄存器的作用。通过这个循环，ZendVM完成opcode指令的执行。opcode执行完后以后指向下一条指令的操作是在当前handler中完成，也就是说每条执行执行完以后会主动更新opline，这里会有下面几个不同的动作：
 ```c
-ZEND_VM_CONTINUE()
-ZEND_VM_ENTER()
-ZEND_VM_LEAVE()
-ZEND_VM_RETURN()
+#define ZEND_VM_CONTINUE()     return  0
+#define ZEND_VM_ENTER()        return  1
+#define ZEND_VM_LEAVE()        return  2
+#define ZEND_VM_RETURN()       return -1
 ```
-ZEND_VM_CONTINUE()表示继续执行下一条opcode；ZEND_VM_ENTER()/ZEND_VM_LEAVE()是调用函数时的动作，普通模式下ZEND_VM_ENTER()实际就是return 1，然后execute_ex()中会将execute_data切换到被调函数的结构上，对应的，在函数调用完成后ZEND_VM_LEAVE()会return 2，再将execute_data切换至原来的结构；ZEND_VM_RETURN()表示执行完成，比如exit，这时候execute_ex()将退出执行。下面看一个具体的例子：
+ZEND_VM_CONTINUE()表示继续执行下一条opcode；ZEND_VM_ENTER()/ZEND_VM_LEAVE()是调用函数时的动作，普通模式下ZEND_VM_ENTER()实际就是return 1，然后execute_ex()中会将execute_data切换到被调函数的结构上，对应的，在函数调用完成后ZEND_VM_LEAVE()会return 2，再将execute_data切换至原来的结构；ZEND_VM_RETURN()表示执行完成，返回-1给execute_ex()，比如exit，这时候execute_ex()将退出执行。下面看一个具体的例子：
 ```php
 $a = "hi~";
 echo $a;
@@ -111,4 +111,61 @@ r14            0x601010 6295568
 (gdb) p ((zend_execute_data *)$r14)->ip
 $3 = 9999
 ```
+了解完全局寄存器变量，接下来我们再回头看下PHP7中的用法，处理也比较简单，就是在execute_ex()执行各opcode指令的过程中，不再将execute_data作为参数传给handler，而是通过寄存器保存execute_data及opline的地址，handler使用时直接从全局变量(寄存器)读取，执行完再把下一条指令更新到全局变量。
 
+该功能需要GCC 4.8+支持，默认开启，可以通过 --disable-gcc-global-regs 编译参数关闭。以x86_64为例，execute_data使用r14寄存器，opline使用r15寄存器：
+```c
+//file: zend_execute.c line: 2631
+# define ZEND_VM_FP_GLOBAL_REG "%r14"
+# define ZEND_VM_IP_GLOBAL_REG "%r15"
+
+//file: zend_vm_execute.h line: 315
+register zend_execute_data* volatile execute_data __asm__(ZEND_VM_FP_GLOBAL_REG);
+register const zend_op* volatile opline __asm__(ZEND_VM_IP_GLOBAL_REG);
+```
+execute_data、opline定义为全局变量，下面看下execute_ex()的变化，展开后：
+```c
+ZEND_API void execute_ex(zend_execute_data *ex)
+{
+    const zend_op *orig_opline = opline;
+    zend_execute_data *orig_execute_data = execute_data;
+    
+    //将当前execute_data、opline保存到全局变量
+    execute_data = ex;
+    opline = execute_data->opline
+
+    while (1) {
+        ((opcode_handler_t)opline->handler)();
+
+        if (UNEXPECTED(!opline)) {
+            execute_data = orig_execute_data;
+            opline = orig_opline;
+
+            return;
+        }
+    }
+}
+```
+这个时候调用各opcode指令的handler时就不再传入execute_data的参数了，handler使用时直接从全局变量读取，仍以上面的赋值ZEND_ASSIGN指令为例，handler展开后：
+```c
+static int  __attribute__((fastcall)) ZEND_ASSIGN_SPEC_CV_CONST_HANDLER(void)
+{
+    ...
+
+    //ZEND_VM_NEXT_OPCODE_CHECK_EXCEPTION()
+    opline = execute_data->opline + 1;
+    return;    
+}
+```
+当调用函数时，会把execute_data、opline更新为被调函数的，然后回到execute_ex()开始执行被调函数的指令：
+```c
+# define ZEND_VM_ENTER()           execute_data = EG(current_execute_data); LOAD_OPLINE(); ZEND_VM_CONTINUE()
+```
+展开后：
+```c
+//ZEND_VM_ENTER()
+execute_data = execute_data->current_execute_data;
+opline = execute_data->opline;
+return;
+```
+这两种处理方式并没有本质上的差异，只是通过全局寄存器变量提升了一些性能。
