@@ -169,3 +169,5 @@ opline = execute_data->opline;
 return;
 ```
 这两种处理方式并没有本质上的差异，只是通过全局寄存器变量提升了一些性能。
+
+> __Note:__ automake编译时的命令是cc，而不是gcc，如果更新gcc后发现PHP仍然没有支持这个特性，请检查下cc是否指向了新的gcc
