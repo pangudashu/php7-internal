@@ -37,6 +37,7 @@
       * <a href="3/zend_executor.md#331-数据结构">3.3.1 基本结构</a>
       * <a href="3/zend_executor.md#332-执行流程">3.3.2 执行流程</a>
       * <a href="3/zend_executor.md#333-函数的执行流程">3.3.3 函数的执行流程</a>
+      * [3.3.4 全局execute_data和opline](3/zend_global_register.md)
    * 3.4 面向对象实现
       * [3.4.1 类](3/zend_class.md)
       * [3.4.2 对象](3/zend_object.md)
