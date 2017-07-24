@@ -43,9 +43,9 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_ASSIGN_SPEC_CV_CONST_HANDLER(Z
     ZEND_VM_NEXT_OPCODE_CHECK_EXCEPTION();
 }
 ```
-所有opcode的handler定义格式都是相同的，其参数列表通过ZEND_OPCODE_HANDLER_ARGS宏定义，展开后实际只有一个execute_data；ZEND_FASTCALL这个宏是用于指定C语言函数调用方式的，这里指定的是fastcall方式，GNU C下就是__attribute__((fastcall))。去掉一些非关键操作展开后：
+所有opcode的handler定义格式都是相同的，其参数列表通过ZEND_OPCODE_HANDLER_ARGS宏定义，展开后实际只有一个execute_data，展开后：
 ```c
-static int  __attribute__((fastcall)) ZEND_ASSIGN_SPEC_CV_CONST_HANDLER(zend_execute_data *execute_data)
+static int ZEND_ASSIGN_SPEC_CV_CONST_HANDLER(zend_execute_data *execute_data)
 {
     //USE_OPLINE
     const zend_op *opline = execute_data->opline;
@@ -148,7 +148,7 @@ ZEND_API void execute_ex(zend_execute_data *ex)
 ```
 这个时候调用各opcode指令的handler时就不再传入execute_data的参数了，handler使用时直接从全局变量读取，仍以上面的赋值ZEND_ASSIGN指令为例，handler展开后：
 ```c
-static int  __attribute__((fastcall)) ZEND_ASSIGN_SPEC_CV_CONST_HANDLER(void)
+static int ZEND_ASSIGN_SPEC_CV_CONST_HANDLER(void)
 {
     ...
 
