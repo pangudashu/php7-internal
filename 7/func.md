@@ -67,7 +67,7 @@ const zend_function_entry mytest_functions[] = {
 #define ZEND_FENTRY(zend_name, name, arg_info, flags)   { #zend_name, name, arg_info, (uint32_t) (sizeof(arg_info)/sizeof(struct _zend_internal_arg_info)-1), flags },
 #define ZEND_FN(name) zif_##name
 ```
-最后将`zend_module_entry->functions`设置为`timeout_functions`即可：
+最后将`zend_module_entry->functions`设置为`mytest_functions`即可：
 ```c
 zend_module_entry mytest_module_entry = {
     STANDARD_MODULE_HEADER,
