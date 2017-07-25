@@ -46,6 +46,10 @@
       * [3.4.5 魔术方法](3/zend_magic_method.md)
       * [3.4.6 类的自动加载](3/zend_autoload.md)
    * [3.5 运行时缓存](3/zend_runtime_cache.md)
+   * 3.6 Opcache
+      * 3.6.1 opcode缓存
+      * 3.6.2 opcode优化
+      * 3.6.3 JIT
 * 第4章 PHP基础语法实现
    * [4.1 类型转换](4/type.md)
    * [4.2 选择结构](4/if.md)
