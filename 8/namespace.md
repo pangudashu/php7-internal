@@ -259,7 +259,7 @@ typedef struct _zend_file_context {
 ```
 简单总结下use的几种不同用法：
 * __a.导入命名空间:__ 导入的名称保存在FC(imports)中，编译使用的语句时搜索此符号表进行补全
-* __b.导入类:__ 导入的名称保存在FC(imports)中，与a不同的时如果不会根据"\"切割后的最后一节检索，而是直接使用类名查找
+* __b.导入类:__ 导入的名称保存在FC(imports)中，与a不同的是不会根据"\"切割后的最后一节检索，而是直接使用类名查找
 * __c.导入函数:__ 通过`use function`导入到FC(imports_function)，补全时先查找FC(imports_function)，如果没有找到则继续按照a的情况处理
 * __d.导入常量:__ 通过`use const`导入到FC(imports_const)，不全是先查找FC(imports_const)，如果没有找到则继续按照a的情况处理
 
