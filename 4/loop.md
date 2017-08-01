@@ -241,7 +241,7 @@ foreach($arr as $k=>$v){
 
 了解了foreach的实现、运行机制我们再回头看下其编译过程：
 
-* __(1)__ 编译"拷贝"数组/对象操作的opcode：`ZEND_FE_RESET_R`，如果value是引用则是`ZEND_FE_RESET_RW`，执行时如果发现数组或对象属性为空则直接跳出遍历，所以这条opcode还需要知道跳出的位置，这个位置需要编译完foreach以后才能确定；
+* __(1)__ 编译拷贝数组、对象操作的指令：ZEND_FE_RESET_R，如果value是引用则是ZEND_FE_RESET_RW。执行时如果发现遍历的变量不是数组、对象，则抛出一个warning，然后跳出循环，所以这条指令还需要知道跳出的位置，这个位置需要编译完foreach以后才能确定；
 * __(2)__ 编译fetch数组/对象当前单元key、value的opcode：`ZEND_FE_FETCH_R`，如果是引用则是`ZEND_FE_FETCH_RW`，此opcode还需要知道当遍历已经到达数组末尾时跳出遍历的位置，与步骤(1)的opcode相同,另外还有一个关键操作，前面已经说过遍历的key、value实际就是普通的局部变量，它们的内存存储位置正是在这一步分配确定的，分配过程与普通局部变量的过程完全相同，如果value不是一个CV变量(比如：foreach($arr as $v["xx"]){...})则还会编译其它操作的opcode；
 * __(3)__ 如果foreach定义了key则编译一条赋值opcode，此操作是对key进行赋值；
 * __(4)__ 编译循环体statement；
