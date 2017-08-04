@@ -446,7 +446,6 @@ void zend_compile_prop_decl(zend_ast *ast)
     zend_class_entry *ce = CG(active_class_entry);
     uint32_t i, children = list->children;
 
-    //也不清楚这里为啥用循环，测试的情况child只有一个
     for (i = 0; i < children; ++i) {
         zend_ast *prop_ast = list->child[i]; //这个节点类型为：ZEND_AST_PROP_ELEM
         zend_ast *name_ast = prop_ast->child[0]; //属性名节点
