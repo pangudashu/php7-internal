@@ -242,9 +242,11 @@ $a,$b -> zend_string_1(refcount=0,val="hi~")
 > 如何简单快捷查看一个变量的引用情况？
  1. 安装[xdebug](https://xdebug.org/docs/install)扩展，并启用它。通过`php -m | grep xdebug`检查xdebug是否安装正确。
  2. 编写代码测试代码，调用`xdebug_debug_zval()`函数查看。
- 3. 执行代码。
+ 3. 执行代码`php test.php`。
  
  ```php
+ <?php
+    // test.php
     $a = "hi~";
     $b = $a;
     xdebug_debug_zval('a');
