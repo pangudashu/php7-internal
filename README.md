@@ -10,6 +10,8 @@
 ## 纸质版
 <div align="center">
     <img src="img/book.jpg" height="280" >
+
+    (coming soon)
 </div>
 
 ## 目录：
