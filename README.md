@@ -11,9 +11,8 @@
 <div align="center">
     <img src="img/book.jpg" height="280" >
     
-    [京东](https://item.jd.com/12267210.html)
-    
-    [当当](http://product.dangdang.com/25185400.html)
+    <a href="https://item.jd.com/12267210.html">[京东]</a>
+    <a href="http://product.dangdang.com/25185400.html">[当当]</a>
 </div>
 
 ## 目录：
