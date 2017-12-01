@@ -10,8 +10,8 @@
 ## 纸质版
 <div align="center">
     <img src="img/book.jpg" height="280" >
-
-    (coming soon)
+    [京东](https://item.jd.com/12267210.html)
+    [当当](http://product.dangdang.com/25185400.html)
 </div>
 
 ## 目录：
