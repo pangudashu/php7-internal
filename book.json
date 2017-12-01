@@ -1,0 +1,7 @@
+{
+    "title" : "PHP7内核剖析",
+    "author" : "pangudashu",
+    "description" : "PHP7内核剖析，基于PHP版本：php-7.0.12",
+    "language" : "zh-hans",
+    "gitbook" : ">=3.0.0"
+}
