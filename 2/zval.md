@@ -278,7 +278,7 @@ $b[] = 3;
 
 ![zval_sep](../img/zval_sep.png)
 
-不是所有类型都可以copy的，比如对象、资源，实时上只有string、array两种支持，与引用计数相同，也是通过`zval.u1.type_flag`标识value是否可复制的：
+不是所有类型都可以copy的，比如对象、资源，事实上只有string、array两种支持，与引用计数相同，也是通过`zval.u1.type_flag`标识value是否可复制的：
 ```c
 #define IS_TYPE_COPYABLE         (1<<4)
 ```
