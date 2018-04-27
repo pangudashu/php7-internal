@@ -87,7 +87,7 @@ if (by_ref) {
 * __ZEND_FETCH_W:__ 这条opcode对应的操作是创建一个IS_INDIRECT类型的zval，指向static_variables中对应静态变量的zval
 * __ZEND_ASSIGN_REF:__ 它的操作是引用赋值，即将一个引用赋值给CV变量
 
-通过上面两条opcode可以确定静态变量的读写过程：首先根据变量名在static_variables中取出对应的zval，然后将它修改为引用类型并赋值给局部变量，也就是说`static $count = 4;`包含了两个操作，严格的将`$count`并不是真正的静态变量，它只是一个指向静态变量的局部变量，执行时实际操作是：`$count = & static_variables["count"];`。上面例子$count与static_variables["count"]间的关系如图所示。
+通过上面两条opcode可以确定静态变量的读写过程：首先根据变量名在static_variables中取出对应的zval，然后将它修改为引用类型并赋值给局部变量，也就是说`static $count = 4;`包含了两个操作，严格的说`$count`并不是真正的静态变量，它只是一个指向静态变量的局部变量，执行时实际操作是：`$count = & static_variables["count"];`。上面例子$count与static_variables["count"]间的关系如图所示。
 
 ![](../img/zend_static_ref.png)
 
