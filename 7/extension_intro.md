@@ -270,7 +270,7 @@ __(5)PHP_ADD_INCLUDE(path):__ 添加include路径，即：`gcc -Iinclude_dir`，
 
 __(6)PHP_CHECK_LIBRARY(library, function [, action-found [, action-not-found [, extra-libs]]]):__ 检查依赖的库中是否存在需要的function，action-found为存在时执行的动作，action-not-found为不存在时执行的动作，比如扩展里使用到线程pthread，检查pthread_create()，如果没找到则终止./configure执行：
 ```sh
-PHP_ADD_INCLUDE(pthread, pthread_create, [], [
+PHP_CHECK_LIBRARY(pthread, pthread_create, [], [
     AC_MSG_ERROR([not find pthread_create() in lib pthread])
 ])
 ```
