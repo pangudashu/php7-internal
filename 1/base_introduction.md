@@ -17,7 +17,7 @@ PHP 独特的语法混合了 C、Java、Perl 以及 PHP 自创新的语法，丰
 * 效率高：PHP消耗相当少的系统资源，自动gc机制
 * 类库资源：有大量可用类库供开发者使用
 * 扩展性：允许用户使用C/C++扩展PHP
-* 跨平台：可以在unix、windows、max os等系统上面使用PHP 
+* 跨平台：可以在unix、windows、mac os等系统上面使用PHP 
 
 ### 1.1.3 PHP的相关组成
 
